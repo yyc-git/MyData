@@ -68,6 +68,162 @@ OpenCode（编码/执行）
 AI 模型（DeepSeek Flash/Pro）
 ```
 
+### opencode-schedule
+
+```markdown
+---
+name: "opencode-schedule"
+description: "OpenCode 调度方式：写 .opencode-brief.md → type pipe → opencode run --attach --no-replay"
+---
+
+# opencode-schedule — OpenCode 调度协议
+
+> 所有调度 OpenCode 的 skill 统一引用本协议。
+> 不可单独使用，只能被 gts-dev-workflow / gts-dev-fix / gts-dev-feat / gts-dev-refactor / gts-code-review / gts-analysis 等 skill 引用。
+
+## 调度方式（标准模板）
+
+### 1️⃣ 写 brief 文件
+
+```markdown
+**文件路径：** `<projectDir>/.opencode-brief.md`
+**内容要求：**
+- 自动在开头注入 `笔记/项目文档/project-context.md` 的内容（bot 拼接，OpenCode 不自己读）
+- 包含方案内容（如有）
+- 包含 Delta Specs（如有）
+- 包含 TDD 模板（先写测试、再实现）
+- 包含集成测试纪律（🔴🔴🔴 先让测试因 bug 真实失败，禁止 mock 函数替代）
+- 末尾写「不需要代码审核，代码审核是单独步骤」
+```
+
+### 2️⃣ 调度命令
+
+```powershell
+# 简单修复 / 常规功能 / 重构 / Verify — Flash
+exec(
+  command="cd <projectDir> && type .opencode-brief.md | opencode run -m opencode-go/deepseek-v4-flash --dir . --attach http://localhost:4096 --no-replay",
+  background=true,
+  timeout=0
+)
+
+# 方案 / 架构 / 复杂bug根因分析 — Pro + max
+exec(
+  command="cd <projectDir> && type .opencode-brief.md | opencode run -m opencode-go/deepseek-v4-pro --variant max --dir . --attach http://localhost:4096 --no-replay",
+  background=true,
+  timeout=0
+)
+
+# 纯方案（plan agent，禁止改代码）
+exec(
+  command="cd <projectDir> && type .opencode-brief.md | opencode run --agent plan -m opencode-go/deepseek-v4-pro --variant max --dir . --attach http://localhost:4096 --no-replay",
+  background=true,
+  timeout=0
+)
+```
+
+### 3️⃣ 参数说明
+
+| 参数 | 说明 |
+|------|------|
+| `type .opencode-brief.md \|` | stdin pipe 传入 brief（PS 不支持 `<` 重定向） |
+| `-m opencode-go/deepseek-v4-*` | 模型名必须带 provider 前缀 `opencode-go/` |
+| `--variant max` | Pro 专用，最大 reasoning |
+| `--agent plan` | Pro 专用，plan agent 模式（物理禁止改代码） |
+| `--dir .` | 工作目录 |
+| `--attach http://localhost:4096` | 连接到已有 web UI 查看进度 |
+| `--no-replay` | 不需要回放 |
+
+### 🔴🔴🔴 4️⃣ poll 步骤（同一回合内连续 poll，不 yield，不等兄弟消息）
+
+**调度 OpenCode 后，第一件事是立即开始 poll 循环**，不是等兄弟发消息再看。
+
+**核心原则：不 yield 等兄弟消息。在同一回合内连续 poll，直到完成或达到工具调用上限。**
+
+```text
+Step 1: dispatch OpenCode (background=true)
+
+Step 2: process(action=list) 确认启动，拿到 sessionId
+        → 找到 "gentle-haven"，状态为 "running"
+
+Step 3: 同一回合内连续 poll 循环:
+        pollCount = 0
+        WHILE pollCount < 40:
+            process(action=poll, sessionId=gentle-haven, timeout=30000)
+            → 等 30 秒
+            → 如果 completed：break，进 Step 4
+            → 如果仍 running：
+                pollCount += 1
+                每 10 次输出一次进度
+                （如「OpenCode 还在跑，已等 X 分钟」）
+                → 继续下一轮 poll（不 yield，不等用户消息）
+
+        IF pollCount >= 40 仍未完成（超过 20 分钟）:
+            输出「任务超过 20 分钟，设置 cron 继续监控」
+            → 设置 cron job 每 30s 自动醒来检查
+            → YIELD 结束当前回合
+            后续由 cron 自动唤醒，不再等兄弟消息
+
+Step 4: 任务完成 → 拉完整日志
+        process(action=log, sessionId=<sessionId>)
+
+Step 5: 分析结果 → 汇报给兄弟
+        （按 MEMORY.md → 先汇报再继续 规则）
+```
+
+**关键规则：**
+- **不 yield，不依赖兄弟消息作为触发条件** — 同一回合内连续 poll
+- 单次 poll 等 30 秒，OpenCode 有输出时可能提前返回（不用等满 30s）
+- 每 10 轮输出一次进度文本，避免 silent tool loop
+- 40 轮 = 20 分钟上限（保守值）。超过后退化为 cron+yield 兜底
+- 大部分 OpenCode 任务（修复/审核）在 3-15 分钟内完成
+- 每次 poll 约消耗 ~200 tokens，40 轮 = ~8k tokens，在 1M 上下文中可控
+- **禁止先告诉兄弟「去看 web UI」再 poll** — dispatch 后就静默 poll，不出声
+- 完成后再主动汇报结果，不需要用户来问进度
+
+> 只有耗时超过 20 分钟的任务才用 cron+yield 兜底。绝大部分任务在这个时间前完成。
+
+**对照 MEMORY.md 的 token 优化规则：**
+- `tool-loop-yield`：单回合 >30 轮 tool call 时主动输出进度。这里每 10 轮输出一次，符合规则
+- `spawn-subagent`：超过 20 分钟的复杂任务可以考虑 spawn 子 session 独立监控
+
+### 5️⃣ 硬性规则
+
+- **🔴🔴🔴 调度 OpenCode 时禁止自己改代码/停 OpenCode**
+  - **不能自己改代码** — 调度了 OpenCode 就让它改，我不碰
+  - **不能擅自停 OpenCode** — 我根本停不了 OpenCode（杀进程/重启服务都没用）
+  - **后果：** 旧 OpenCode 还在跑 → 下次调度时两个 OpenCode 抢文件 → 冲突爆炸 → 兄弟发现
+  - **正确做法：** dispatch → poll 等完成 → 出结果汇报。旧进程的 uncommitted 改动不影响新调度
+- **🔴 统一用 `exec(background=true) + stdin pipe`**，禁止 sessions_spawn
+- **🔴 先写 `.opencode-brief.md`**，再用 `type` 管道传
+- **🔴 遇代码修改必须调度 OpenCode** — 不改代码自己手写
+- **🔴 `timeout=0` 不限时** — OpenCode 做复杂改动跑 15-30 分钟很正常
+- **🔴 优先选 Flash** — 只有复杂逻辑/架构/审核才用 Pro
+- **🔴 brief 末尾必须写「不需要代码审核，代码审核是单独步骤」**
+- **🔴 禁止让 OpenCode 做 E2E 相关工作**（重启服务、启动脚本、截图、抓日志）
+- **🔴 不擅自判断 OpenCode 卡住** — poll 没输出 ≠ 卡住，至少等 1 小时
+- **🔴🔴🔴 dispatch后必须立即开始 poll** — 不是先告诉兄弟去看 web UI。先 poll 拿到 sessionId 再说话。违反后果：兄弟需要连催 3 次
+- **🔴 [兄弟指令完整传达] OpenCode brief 不能挑重点、不能合并概括、不能省略任何条目**
+- **🔴🔴🔴 [根因分析交给 OpenCode Pro] — 不自己分析根因**
+  - 遇到 bug 需要分析根因时，只做数据收集，不 trace 代码路径分析根因
+  - 数据收集包括：服务端日志、E2E 运行日志、关键代码路径文件列表、问题现象描述
+  - 数据收集完 → 写 brief → 调度 OpenCode Pro（plan agent）分析根因
+  - 违反后果：自己分析了一堆却分析错方向，兄弟还要纠正
+- **🔴 brief 必须包含 specs + TDD 模板** — 参照 gts-dev-workflow 的 brief 模板
+- **🔴 模型选择：兄弟指定模型时按兄弟说的执行，不判断**
+
+### 6️⃣ 模型选择速查
+
+| 任务类型 | 模型 | 额外参数 |
+|----------|------|---------|
+| 简单修复 / 常规实现 / 重构 | Flash | 无 |
+| Verify（场景覆盖检查） | Flash | 无 |
+| 代码审核 | Pro + max | `--variant max` |
+| 方案 / 架构设计 | Pro + max, plan agent | `--agent plan --variant max` |
+| 复杂bug根因分析 | Pro + max | `--variant max` |
+| 兄弟指定模型 | 按兄弟说的 | 不判断 |
+
+```
+
 | 角色 | 负责 | 用谁 |
 |------|------|------|
 | **你** | 定义"做什么" | 一句话描述 |
@@ -118,7 +274,7 @@ Skill 不是普通的文档。普通的 `deploy.md` 15 步部署指南，人读�
 | **测试** | gts-e2e-test, gts-e2e-auto, gts-e2e-perf | 手动 E2E、全自动 E2E、性能测试 |
 | **部署** | gts-deploy, gts-service, gts-logs | 一键部署、服务启停、日志抓取 |
 | **维护** | gts-save-flow, gts-save-memory, gts-git-commit | 全流程保存、记忆保存、git 提交 |
-| **管理** | gts-analysis, gts-code-review, gts-recall, gts-stop | 架构分析、代码审核、记忆回溯、紧急停止 |
+| **管理** | opencode-schedule, gts-analysis, gts-code-review, gts-recall, gts-stop | OpenCode 调度协议、架构分析、代码审核、记忆回溯、紧急停止 |
 
 每个 Skill 有自己的 `SKILL.md` 文件，遵循固定格式：触发词、Step-by-step 流程、红线、输出标准。Skill 之间可以互相引用——比如 `gts-dev-fix` 在需要看日志时会调度 `gts-logs`，需要部署时会调度 `gts-deploy`。
 
@@ -138,6 +294,7 @@ Skill 不是普通的文档。普通的 `deploy.md` 15 步部署指南，人读�
 | gts-logs | 服务端日志分析 | 看日志 |
 | gts-save-flow | 全流程保存（审核→测试→笔记→提交） | 保存 |
 | gts-code-review | 代码审核 | 代码审核 / review |
+| opencode-schedule | OpenCode 调度协议（被所有 dev/review skill 引用） | 间接引用 |
 
 其余 Skill（如 gts-e2e-perf、gts-service、gts-save-memory、gts-git-commit、gts-analysis、gts-recall、gts-stop）为辅助性质（gts-e2e-perf 性能测试、gts-service 服务启停、gts-save-memory 记忆保存、gts-git-commit 单独提交、gts-analysis 架构分析、gts-recall 记忆回溯、gts-stop 紧急停止），不单独列出。
 
@@ -402,7 +559,7 @@ msg * "<30字摘要>"
 
 ## 附录：核心 Skill 完整定义
 
-以下为 10 个核心 Skill 的完整 `SKILL.md` 文件内容：
+以下为 11 个核心 Skill 的完整 `SKILL.md` 文件内容：
 
 ### gts-dev-feat
 
