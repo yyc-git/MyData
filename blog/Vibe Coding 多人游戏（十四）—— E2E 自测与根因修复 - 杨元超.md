@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（十四）—— E2E 自测与根因修复
+﻿# Vibe Coding 多人游戏（十四）—— E2E 自测与根因修复
 
 > **📚 系列索引**
 > 
@@ -21,8 +21,8 @@ AI 写代码很快——5 分钟生成 200 行代码，编译通过，看起来�
 AI 发现 bug 后，典型的修复流程：
 
 ```
-AI：编译报错，让我看看日志
-→ 读日志 → 觉得是问题 A → 改代码
+AI：编译报错，让我看看
+→ 看报错信息 → 觉得是问题 A → 改代码
 → 跑测试 → 还是报错
 → 觉得是问题 B → 改代码
 → 跑测试 → 又出新错
@@ -35,16 +35,26 @@ AI：编译报错，让我看看日志
 
 **纯靠"读代码"来修 bug，就像蒙眼修车。** 你能摸到引擎盖，能想象里面是什么结构，但你不点火听听声音，永远不知道是气缸漏气还是火花塞坏了。
 
-2026 年 6 月 20 日，我建立了一个专门调试工具：WebGL E2E 调试体系。四层结构：
+2026 年 6 月 20 日，我建立了一个专门调试工具：WebGL E2E 调试体系。
 
-| 层 | 能力 | 实现方式 |
-|----|------|---------|
-| L1 | 每帧 drawCalls/triangles/textures/programs | `renderer.info` → `window.__GL_STATS__` |
-| L2 | GLSL 编译错误自动捕获 | `compileShader` 包装 → `window.__SHADER_ERRORS__` |
-| L3 | DC 按 Mesh/Line/Sprite/SkinnedMesh 分桶 | scene.traverseVisible 分析 |
-| L4 | 逐条 GL 命令 + shader 源码 | 包装 drawArrays/drawElements/useProgram |
+在一开始，我尝试过直接用 **Spector.js**——Google 的 WebGL 调试器，Chrome 扩展，能录制每一帧的所有 WebGL 调用。Spector.js 界面漂亮、功能强大，录制后能可视化查看 draw call 列表、shader 源码、uniform 值。但问题来了：
 
-最狠的是 L4——安装 GLTracer 后 2 秒能捕获 2662 个 draw calls，8 个 programs，逐条显示 mode/count/programId。这个数据量对人类来说太多了，但对 AI 正好——它在日志里能找到"这个 shader 应用了 200 次但只绘制了 1 个三角形"这种问题，从代码上看不出来的。
+1. **它是手动工具**——需要人打开 DevTools、点录制、互动、再停止。没法嵌入自动化流程。
+2. **录制数据量太大**——一帧 2600+ 个 draw calls，人类根本看不过来。而 AI 要看需要你手动导出 JSON，再手动喂给 OpenCode，不是按需的。
+3. **扩展模式局限**——Chrome Extensions 的权限模型和 Playwright 自动化不兼容。
+
+所以我把 Spector.js 定位为"初步调查工具"——先用 Spector.js 手动确认问题出在渲染层，然后自己动手写一套可被 AI 调用的 WebGL 调试层，嵌入到游戏运行时代码中。
+
+最终的四层调试体系：
+
+| 层 | 能力 | 实现方式 | 替代对象 |
+|----|------|---------|---------|
+| L1 | 每帧 drawCalls/triangles/textures/programs | `renderer.info` → `window.__GL_STATS__` | Spector.js 概览面板 |
+| L2 | GLSL 编译错误自动捕获 | `compileShader` 包装 → `window.__SHADER_ERRORS__` | DevTools Console |
+| L3 | DC 按 Mesh/Line/Sprite/SkinnedMesh 分桶 | scene.traverseVisible 分析 | 自定义 |
+| L4 | 逐条 GL 命令 + shader 源码 | 包装 drawArrays/drawElements/useProgram | Spector.js 详细录制 |
+
+最狠的是 L4——安装 GLTracer 后 2 秒能捕获 2662 个 draw calls，8 个 programs，逐条显示 mode/count/programId。这个数据量对人类来说太多了，但对 AI 正好——它在日志里能找到"这个 shader 应用了 200 次但只绘制了 1 个三角形"这种问题，从代码上看不出来的。Spector.js 也能录这个级别的数据，但它的 JSON 导出格式要清洗才能喂给 AI，而 GLTracer 输出就是纯文本日志，OpenCode 直接 grep 就能分析。
 
 ---
 
@@ -133,7 +143,7 @@ E2E 自测发现问题后，修复流程应该是：
 
 ```
 1. 复现 bug（E2E 测试天然做这件事）
-2. 定位根因（看日志 → 缩小范围 → 看代码）
+2. 定位根因（看**专门注入的日志** → 缩小范围 → 看代码）
 3. 写测试锁定 bug（红 → 绿 → 锁定）
 4. 修复代码
 5. 跑所有测试（确保没 regression）
@@ -147,13 +157,13 @@ OpenCode 的 `gts-dev-fix` Skill 被设计为分两步走：
 ```
 1. 读 bug 描述
 2. 搜相关代码（搜类名、变量名、文件名）
-3. 看最近的运行日志（调度 gts-logs 或自定义 log 查询）
+3. 看最近的运行日志（调度 gts-logs）——这些日志是我们**特意为根因分析设计的**：每个关键节点都有独立的 log 语句（比如 "ApiFinished guard check: players.size=5, Object.keys=5"），这样当 bug 触发时，日志直接告诉你守卫条件被哪个错误判断卡住了，不用对着代码猜。
 4. 提出根因分析 → 让我确认
 5. 我确认后开始修代码
 6. 跑测试 → 循环直到通过
 ```
 
-第 3 步和第 4 步是核心差异。传统的 AI 修 bug 直接跳到第 5 步"开始修代码"，结果就是反复试错。
+第 3 步和第 4 步是核心差异。传统的 AI 修 bug 直接跳到第 5 步"开始修代码"，结果就是反复试错。而这套流程的核心支撑就是日志是**专门为根因分析设计的**——不是 random console.log，而是每个关键决策点都有格式化的、grep 友好的日志输出，一眼就能看出"守卫条件竟然永远返回 true"这种从代码上根本看不出来的问题。
 
 **7 月 3 日的一个真实案例完美展示了这个流程的价值。**
 
@@ -171,9 +181,9 @@ OpenCode 的 `gts-dev-fix` Skill 被设计为分两步走：
 
 ---
 
-## BDD 测试的进化
+## BDD 测试的进化（SCF 服务端集成测试）
 
-BDD 测试从最初 3 个场景一路增长到 7 个。每个场景对应一个真实踩过的坑：
+这里的 BDD 测试是**针对 SCF 云函数的集成测试**——测试线上部署的服务端代码是否正常。不是本地的单元测试，而是真·部署后的 API 可达性验证。BDD 测试从最初 3 个场景一路增长到 7 个。每个场景对应一个真实踩过的坑：
 
 | # | 场景 | 对应踩坑 |
 |---|------|---------|
@@ -191,25 +201,31 @@ BDD 测试从最初 3 个场景一路增长到 7 个。每个场景对应一个�
 
 ## 测试金字塔
 
-最终测试体系分成三层：
+最终测试体系分成三层——注意单元测试和集成测试都采用 BDD（行为驱动开发）格式编写，只是测试范围和工具不同：
 
 ```
      /\
     /E2E\          ← 双窗口模拟，手动/自动触发
    /集成 \
-  /测试   \        ← BDD + Cucumber，7 场景覆盖
+  /测试   \        ← BDD + Cucumber，覆盖后端 SCF + 前端业务逻辑
  /______\
-/ 单元测试\       ← Jest，AI 自动写、自动跑
+/ 单元测试\       ← BDD + Jest，覆盖纯函数/逻辑层
 /________\
 ```
 
-| 层 | 工具 | 执行者 | 覆盖率 |
-|----|------|--------|--------|
-| 单元测试 | Jest | AI 自动 | 核心逻辑 90%+ |
-| 集成测试 | BDD Cucumber | AI 自动 | 服务端场景 7+ |
-| E2E 测试 | Playwright | 手动/自动触发 | 关键路径 |
+| 层 | 工具 | 范围 | 执行者 | 覆盖率 |
+|----|------|------|--------|--------|
+| 单元测试 | BDD + Jest | 纯函数、逻辑层（Movement / EntityStore） | AI 自动 | 核心逻辑 90%+ |
+| 集成测试 | BDD + Cucumber | **后端** SCF API + WebSocket 可达性；**前端** MultiplayerManager + ManageScene 业务流 | AI 自动 | 服务端 7+ / 前端 3+ |
+| E2E 测试 | Playwright | 完整用户交互：创建房间→加入→移动→退房 | 手动/自动触发 | 关键路径 |
 
-**TDD 纪律：必须先让测试因 bug 真实失败，再修复。** 不准用 mock 函数绕过疑似失败路径。mock 过的测试永远测不到真实路径——那个 `Object.keys(Immutable.Map())` 的 bug 如果用 mock 模拟一个普通对象，测试会通过，但生产环境还是崩。
+三个要点：
+
+1. **单元测试和集成测试都是 BDD 格式**——用 Gherkin 的 Given/When/Then 描述行为，而不是 `expect(add(1,2)).toBe(3)` 这种零散断言。这样 AI 能理解"这个测试测的是什么场景"，而不是"这个测试调了什么函数"。
+
+2. **集成测试两端都有**——后端测试 SCF 部署可达性（这里的 7 个场景），前端测试业务逻辑流程（如 `MultiplayerManager` 的退房流程、`ManageScene` 的组件生命周期）。最初只写了后端集成测试，后来发现前端的一些状态 bug（比如弹窗未关闭就切换页面）也得靠集成测试捕获。
+
+3. **TDD 纪律：必须先让测试因 bug 真实失败，再修复。** 不准用 mock 函数绕过疑似失败路径。mock 过的测试永远测不到真实路径——那个 `Object.keys(Immutable.Map())` 的 bug 如果用 mock 模拟一个普通对象，测试会通过，但生产环境还是崩。
 
 ---
 
