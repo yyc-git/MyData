@@ -211,19 +211,19 @@ OpenCode 的 `gts-dev-fix` Skill 被设计为分两步走：
    /集成 \
   /测试   \        ← Jest + Cucumber，覆盖后端 SCF + 前端业务逻辑
  /______\
-/ 单元测试\       ← Jest + BDD 描述风格，覆盖纯函数/逻辑层
+/ 单元测试\       ← Jest + Cucumber（.feature），覆盖纯函数/逻辑层
 /________\
 ```
 
 | 层 | 工具 | 范围 | 执行者 | 覆盖率 |
 |----|------|------|--------|--------|
-| 单元测试 | Jest（BDD 描述风格） | 纯函数、逻辑层（Movement / EntityStore） | AI 自动 | 核心逻辑 90%+ |
+| 单元测试 | Jest + Cucumber（.feature） | 纯函数、逻辑层（Movement / EntityStore） | AI 自动 | 核心逻辑 90%+ |
 | 集成测试 | Jest + Cucumber（BDD .feature） | **后端** SCF API + WebSocket 可达性；**前端** MultiplayerManager + ManageScene 业务流 | AI 自动 | 服务端 7+ / 前端 3+ |
 | E2E 测试 | Playwright | 完整用户交互：创建房间→加入→移动→退房 | 手动/自动触发 | 关键路径 |
 
 三个要点：
 
-1. **单元测试和集成测试底层都是 Jest**——区别在于组织方式不同：单元测试用 BDD 风格的 `describe/it` 组合来描述行为，集成测试用 Cucumber 的 `.feature` 文件 + Gherkin 语法定义场景。但测试执行器是同一个 `jest` 命令，跑完就是一份报告。不论哪种格式，AI 都能理解
+1. **单元测试和集成测试用的是同一套工具、同一套语法**——都是 Jest + Cucumber 的 `.feature` 文件，用 Gherkin 的 Given/When/Then 描述行为。区别只是覆盖的路径不同：单元测试聚焦纯函数和逻辑层，集成测试覆盖得更全面（包括 SCF 部署可达性、前端业务流等）。执行者都是 AI，跑完就是一份报告。
 
 2. **集成测试两端都有**——后端测试 SCF 部署可达性（这里的 7 个场景），前端测试业务逻辑流程（如 `MultiplayerManager` 的退房流程、`ManageScene` 的组件生命周期）。最初只写了后端集成测试，后来发现前端的一些状态 bug（比如弹窗未关闭就切换页面）也得靠集成测试捕获。
 
