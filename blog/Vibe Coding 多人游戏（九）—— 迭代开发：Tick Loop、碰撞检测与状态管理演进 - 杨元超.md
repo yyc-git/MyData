@@ -143,7 +143,7 @@ VisualStore.flags = Uint8Array([moving_bit | collision_bit, ...])
 
 ## 双轨动画
 
-两种模型格式共存的方案是 Phase 8 决定的（MMD + FBX），实现贯穿整个迭代阶段：
+两种模型格式（MMD + FBX）在这个阶段自然共存，各有独立的加载器和动画管理器：
 
 MMD 巨大娘（PMX + VMD 动画）和 FBX 小人（FBX + mixamo 动画）各自有自己的加载器和动画管理器。前端通过 `isMoving` 布尔值切换 idle/walk 动画——状态同步的最大好处：动画是纯渲染层问题，服务端不需要知道 VMD 和 FBX 的区别。
 
