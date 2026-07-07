@@ -315,7 +315,7 @@ frontend/src/
 
 核心规则：**单机代码文件一行不改。** 所有多人功能放在 `business_layer/multiplayer/` 目录下。多人状态全部放在 `state.multiplayer` 子字段——单机代码不看这个字段，不会冲突。
 
-多人退房时，模块级 `dispose` 负责清理所有资源：clearInterval、WS 连接、插值缓冲区、多人渲染器。
+多人退房时，模块级 `dispose` 负责清理所有资源：clearInterval、WS 连接、多人渲染器。
 
 这个约束在 AI 协作时代尤其重要。传统开发中开闭原则是"好代码"的加分项，在 AI 协作中它是**必需品**——因为 AI 不确定什么不能改，给它一个 5000 行的大文件，它很可能把不相干的地方改出 bug。目录隔离之后，AI 只能在 `business_layer/multiplayer/` 里写代码，单机代码它碰不到。
 
