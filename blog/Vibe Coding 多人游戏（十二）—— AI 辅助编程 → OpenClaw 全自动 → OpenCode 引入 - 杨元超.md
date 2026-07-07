@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（十六）—— AI 辅助编程 → OpenClaw 全自动 → OpenCode 引入
+# Vibe Coding 多人游戏（十二）—— AI 辅助编程 → OpenClaw 全自动 → OpenCode 引入
 
 > **📚 系列索引**
 > 
@@ -120,4 +120,4 @@ AI 对一致性很敏感——你告诉它"所有 API 都用这种模式"，它�
 
 这就是下一期要讲的内容——**OpenClaw 调度层 + Skill 固化 + 自动部署**，把流程串起来。
 
-**下一篇：[Vibe Coding 多人游戏（十七）—— OpenClaw 调度层 + Skill 固化 + 自动部署](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十三）—— OpenClaw 调度层 + Skill 固化 + 自动部署](https://www.cnblogs.com/chaogex/p/21195307)**

@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十七）—— 记忆管理体系
+# Vibe Coding 多人游戏（二十三）—— 记忆管理体系
 
 > **📚 系列索引**
 > 
@@ -94,6 +94,6 @@ token-opt, gts-skill, MEMORY-ARCHIVE
 
 ---
 
-下期讲 **P28：Agent Brief 与 OpenCode 调度规范**——怎么写一个让 AI 不出错的 Brief。
+下期讲 **P24：Agent Brief 与 OpenCode 调度规范**——怎么写一个让 AI 不出错的 Brief。
 
-**下一篇：[Vibe Coding 多人游戏（二十八）—— Agent Brief 与 OpenCode 调度规范](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十四）—— Agent Brief 与 OpenCode 调度规范](https://www.cnblogs.com/chaogex/p/21195307)**

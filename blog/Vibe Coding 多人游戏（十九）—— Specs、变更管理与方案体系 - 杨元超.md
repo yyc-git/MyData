@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十三）—— Specs、变更管理与方案体系
+# Vibe Coding 多人游戏（十九）—— Specs、变更管理与方案体系
 
 > **📚 系列索引**
 > 
@@ -116,6 +116,6 @@ Delta Specs 写清楚"改什么"和"不改什么"——后者和前者同等重�
 
 ---
 
-下期讲 **P24：决策记录精要（ADR）**——40+ 决策中哪些值得学、哪些是反面教材。
+下期讲 **P20：决策记录精要（ADR）**——40+ 决策中哪些值得学、哪些是反面教材。
 
-**下一篇：[Vibe Coding 多人游戏（二十四）—— 决策记录精要（ADR）](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十）—— 决策记录精要（ADR）](https://www.cnblogs.com/chaogex/p/21195307)**

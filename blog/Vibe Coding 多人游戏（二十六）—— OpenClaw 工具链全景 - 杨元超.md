@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（三十）—— OpenClaw 工具链全景
+# Vibe Coding 多人游戏（二十六）—— OpenClaw 工具链全景
 
 > **📚 系列索引**
 > 
@@ -70,6 +70,6 @@ OpenClaw 是一个 AI 网关/代理平台，GTS-Play 用它做开发流程的调
 
 ---
 
-下期讲 **P31：前端性能优化（含 AI 素材管线）**——SoA、帧管理、MMD+FBX、AI 生成 3D。
+下期讲 **P27：前端性能优化（含 AI 素材管线）**——SoA、帧管理、MMD+FBX、AI 生成 3D。
 
-**下一篇：[Vibe Coding 多人游戏（三十一）—— 前端性能优化](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十七）—— 前端性能优化](https://www.cnblogs.com/chaogex/p/21195307)**

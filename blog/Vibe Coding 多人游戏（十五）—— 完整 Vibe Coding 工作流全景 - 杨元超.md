@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（十九）—— 完整 Vibe Coding 工作流全景
+# Vibe Coding 多人游戏（十五）—— 完整 Vibe Coding 工作流全景
 
 > **📚 系列索引**
 > 
@@ -152,4 +152,4 @@ AI 目前能做的很好的是"怎么做"——写代码、跑测试、部署。
 
 工作流讲完了。从下期开始转入**知识管理**板块——项目运行时积累的经验教训怎么被体系化保存下来。
 
-**下一篇：[Vibe Coding 多人游戏（二十）—— Vibe Coding 经验和教训合集](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十六）—— Vibe Coding 经验和教训合集](https://www.cnblogs.com/chaogex/p/21195307)**

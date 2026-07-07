@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十一）—— 三层编码规则体系 + agent-context.md
+# Vibe Coding 多人游戏（十七）—— 三层编码规则体系 + agent-context.md
 
 > **📚 系列索引**
 > 
@@ -94,6 +94,6 @@ AI 知道了之后，违规事件大幅减少——从每周 3-4 次降到几乎
 
 ---
 
-下期讲 **P22：重构标准 🐛🔴🟡🟢 逐条拆解**——GTS-Play 最频发的 bug 类型和审查清单。
+下期讲 **P18：重构标准 🐛🔴🟡🟢 逐条拆解**——GTS-Play 最频发的 bug 类型和审查清单。
 
-**下一篇：[Vibe Coding 多人游戏（二十二）—— 重构标准 🐛🔴🟡🟢 逐条拆解](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十八）—— 重构标准 🐛🔴🟡🟢 逐条拆解](https://www.cnblogs.com/chaogex/p/21195307)**

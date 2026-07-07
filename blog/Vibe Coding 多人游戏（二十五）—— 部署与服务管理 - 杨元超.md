@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十九）—— 部署与服务管理
+# Vibe Coding 多人游戏（二十五）—— 部署与服务管理
 
 > **📚 系列索引**
 > 
@@ -74,6 +74,6 @@
 
 ---
 
-下期讲 **P30：OpenClaw 工具链全景**——16 个 Skill 全家桶。
+下期讲 **P26：OpenClaw 工具链全景**——16 个 Skill 全家桶。
 
-**下一篇：[Vibe Coding 多人游戏（三十）—— OpenClaw 工具链全景](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十六）—— OpenClaw 工具链全景](https://www.cnblogs.com/chaogex/p/21195307)**

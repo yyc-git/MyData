@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（十七）—— OpenClaw 调度层 + Skill 固化 + 自动部署
+# Vibe Coding 多人游戏（十三）—— OpenClaw 调度层 + Skill 固化 + 自动部署
 
 > **📚 系列索引**
 > 
@@ -144,4 +144,4 @@ Brief 不用逐条手写——OpenClaw 从 Skill 模板 + 项目上下文自动�
 
 Skill 流程自动化后，最缺的是**质量保障**。下一期讲 E2E 自测——怎么让 AI 自己测自己修的 bug。
 
-**下一篇：[Vibe Coding 多人游戏（十八）—— E2E 自测与根因修复](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十四）—— E2E 自测与根因修复](https://www.cnblogs.com/chaogex/p/21195307)**

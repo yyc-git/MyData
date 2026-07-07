@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（三十二）—— 通信可靠性与错误处理模式
+# Vibe Coding 多人游戏（二十八）—— 通信可靠性与错误处理模式
 
 > **📚 系列索引**
 > 
@@ -109,6 +109,6 @@ function getPlayer(username) {
 
 ---
 
-下期讲 **P33：教训、反模式与设计模式**——6 类坑 root cause + 13 个可复用模式。
+下期讲 **P29：教训、反模式与设计模式**——6 类坑 root cause + 13 个可复用模式。
 
-**下一篇：[Vibe Coding 多人游戏（三十三）—— 教训、反模式与设计模式](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十九）—— 教训、反模式与设计模式](https://www.cnblogs.com/chaogex/p/21195307)**

@@ -1,17 +1,17 @@
 # Vibe Coding 多人游戏系列 — 详细大纲
 
 > 系列作者：杨元超
-> 共 35 篇（含 P0 目录 + 4 篇已发布 + 30 篇待写）
-> 最后更新：2026-07-07
+> 共 31 篇（含 P0 目录 + 4 篇已发布 + 26 篇待写）
+> 最后更新：2026-07-07（重写 P8-P10，系列从 35 篇缩至 31 篇）
 
 ---
 
 ## 推荐阅读顺序
 
 - **想了解全貌**：P5 总览 → 挑感兴趣的时间线篇 → 挑感兴趣的知识篇
-- **想上手实操**：P5 → P34 起步指南 → P16→P20 工作流 → P25 测试 → P26 Token → P21 规则
-- **想避坑**：P5 → P13 部署 → P33 反模式 → P22 重构标准
-- **时间线通读**：P5 → P6→P7→P8→P9→P10→P11→P12→P13→P14
+- **想上手实操**：P5 → P14 起步指南 → P12→P12 工作流 → P13 测试 → P14 Token → P13 规则
+- **想避坑**：P5 → P10 部署 → P13 反模式 → P14 重构标准
+- **时间线通读**：P5 → P6→P7→P8→P9→P10
 
 ---
 
@@ -129,160 +129,78 @@
 
 ---
 
-### P8 — Phase 3：Monorepo 重构
+### P8 — 大重构：Monorepo + 双服务 + Logic 共享层 + 开闭原则
 
 **字数：** 500-5000（代码不计入）
 
 **内容清单：**
-1. **为什么 Monorepo**
-   - 多 package 共享类型（room-service 和 frontend 共用 MsgGameState 协议）
-   - 统一构建（tsc、rescript build、jest 共用配置）
-2. **Lerna + yarn workspace 配置**
-   - lerna.json 配置
-   - 目录结构：frontend / room-service / match-service / logic
-3. **四包结构设计**
-   - `packages/frontend/` — Three.js + React 前端
-   - `packages/room-service/` — 游戏服务端（TSRPC 4003）
-   - `packages/match-service/` — 匹配服务端（TSRPC 3000）
-   - `packages/logic/` — 共享逻辑（ReScript）
-4. **从 demos/ 到 packages/ 迁移**
-   - 原来 `demos/basic1/` 直接引用 `room-service/src/` — 跨目录 import
-   - tsconfig paths 配置
-5. **坑**
-   - 🕳️ **循环依赖**：monorepo 初始化时包间互相引用
-   - 🕳️ **类型引用路径混乱**：relative path 太长，改用 tsconfig paths
-
----
-
-### P9 — Phase 4：双服务架构
-
-**字数：** 500-5000（代码不计入）
-
-**内容清单：**
-1. **为什么拆**
-   - 原本房间管理 + 匹配逻辑混在一起 → God Object
-   - 职责分离：room 管游戏、match 管匹配分配
-   - 可以独立扩缩容（人多加 match，不加 room）
-2. **架构图**
+1. **发生在同一天（2026-06-09）**
+   - Monorepo、双服务、Logic 层、开闭原则——四个决策是同一个架构方案的不同侧面
+   - 不是四个步骤，是一天落地
+2. **Monorepo：Lerna + yarn workspaces**
+   - 四包结构：frontend / room-service / match-service / logic
+   - 跨包引用用包名而非相对路径
+   - 🕳️ 循环依赖 → 强制依赖单向链
+3. **双服务：room-service + match-service**
+   - room-service（WS 4003）：游戏循环、状态广播
+   - match-service（HTTP 3000）：房间匹配、列表查询
+   - 🕳️ match 断 WS 重连 → 改为实时查询不缓存
+4. **Logic 共享层：ReScript 纯函数**
+   - executeCommand / isCollision / computeDamage 纯函数在两端复用
+   - 编译产物仅 49KB
+   - 🕳️ bundle 闭包暴露 → 直接注入 node_modules
+5. **开闭原则：单机 zero-touch**
+   - business_layer/multiplayer/ 隔离目录
+   - state.multiplayer 子字段不污染单机状态
+   - 模块级 dispose 清理所有残留
+   - AI 协作时代的第一架构约束
+6. **依赖单向链**：
    ```
-   match-service（HTTP, 3000）
-       ↑↓ WS 取房间状态
-   room-service（WS, 4003）
-       ↑↓
-   浏览器（Three.js 前端）
+   logic（最底层，零依赖）
+       ↑
+   room-service（依赖 logic 纯函数）
+       ↑
+   frontend（依赖 room-service 协议类型）
+       ↑
+   match-service（最上层，依赖 room-service）
    ```
-3. **room-service（WS, 4003）** — 游戏循环、状态广播、房间生命周期、玩家管理
-4. **match-service（HTTP, 3000）** — 匹配算法、房间分配、房间列表查询
-5. **TSRPC 全链路类型定义**
-   - `serviceProto.ts` + `shared/protocols/`
-   - `State.ts` + `StateType.ts` 统一状态入口
-6. **坑**
-   - 🕳️ **包间共享类型的引用策略**：两个包都 import 同一份 types
-   - 🕳️ **match 断 WS 重连 room 的容错**：room 重启 match 不知道
 
 ---
 
-### P10 — Phase 5：Logic 共享层
+### P9 — 迭代开发：Tick Loop + 碰撞检测 + 状态管理演进
 
 **字数：** 500-5000（代码不计入）
 
 **内容清单：**
-1. **为什么抽 logic 包**
-   - 前端 + 服务端共用同一套碰撞、血量、移动逻辑
-   - 不然有两份实现，bug 频发
-2. **ReScript 纯函数**
-   - `executeCommand` — 执行玩家命令（移动、旋转）
-   - `getCollisionBox` — 获取碰撞箱数据
-   - `computeCollisionDamage` — 计算碰撞伤害
-   - 纯函数 + 无副作用 = 前端和服务端行为完全一致
-3. **bundle-logic.js**
-   - 问题：服务端不能直接 import ReScript（25MB node_modules）
-   - 方案：esbuild --bundle → 单文件 49KB
-   - 流程：Rescript 编译 → esbuild --bundle → 注入服务端
-4. **坑**
-   - 🕳️ **bundle 闭包模块的暴露方式**：尝试 Module._load hook → 太复杂 → 改为直接注入 node_modules
-   - 🕳️ **ReScript index.res 接口设计改来改去**：返回值类型调整多次
+1. **两周迭代（2026-06-10 ~ 2026-06-28）**
+   - 架构定型后的功能迭代和 bug 修复
+   - Tick Loop、碰撞检测、状态管理——三者交织进行
+2. **Tick Loop + 代次守卫**
+   - 10Hz setInterval、收集命令→执行→碰撞→广播
+   - 代次守卫：每次启动递增 gen，旧 loop 自毁
+   - 绝对状态下发：全量 MsgGameState，客户端不做逻辑
+3. **碰撞检测演进（AABB→OBB→凸包）**
+   - AABB：轴对齐，旋转后不准
+   - OBB：有向包围盒，倾斜物体有空隙
+   - 凸包（Convex Hull + SAT）：15 条分离轴完全判定
+   - 凸包算法纯 ReScript 在 logic 包内，两端共用
+   - 🕳️ AI 寻路卡住 tick loop → 200ms 超时兜底
+4. **状态管理四轮重构**
+   - v1 Immutable.js Map：~50KB，GC 压力大
+   - v2 自制 HashMap：hash 冲突→丢数据
+   - v3 Js.Dict：最稳，类型安全不够
+   - v4 SoA Store：TypedArray 连续内存，WebGPU 就绪
+   - 教训：别在运行时容器上过度抽象
+5. **双轨动画**
+   - MMD 巨大娘（PMX + VMD）和 FBX 小人各自独立加载
+   - isMoving 布尔值控制动画切换
+   - 🕳️ FBX clip 重名 'mixamo.com' → 加载后重命名
+6. **BDD 测试体系**
+   - 37 场景覆盖：CameraManager/InputManager/Movement/Game/FindRoom
 
 ---
 
-### P11 — Phase 6：服务端权威完整实现
-
-**字数：** 500-5000（代码不计入）
-
-**内容清单：**
-1. **10Hz Tick Loop 实现**
-   ```typescript
-   let generation = 0
-   let startGameLoop = (state) => {
-     let currentGen = ++generation
-     let interval = state.config.isDebug ? 33 : 100
-     let timer = setInterval(() => {
-       if (currentGen !== generation) { clearInterval(timer); return }
-       state = executeCommand(state)
-       state = computeCollisionDamage(state)
-       broadcastMsgGameState(state)
-     }, interval)
-   }
-   ```
-   - 代次守卫（generation++）：防 warm container 定时器残留
-   - 调试 30fps / 生产 10fps
-2. **核心循环**
-   - 收集玩家命令 → executeCommand → 凸包碰撞检测 → 计算伤害 → 检查游戏状态 → 广播 MsgGameState
-3. **AI giantess 行为逻辑**
-   - 自动移动路径规划
-   - 玩家碰撞判定
-   - 踩踏伤害计算
-4. **绝对状态下发**
-   - `MsgGameState` 含全量字段（position, rotation, hp, collision, animation 等）
-   - 客户端不做计算，只展示 + 插值
-5. **碰撞检测：OBB → 凸包（Convex Hull）**
-   - v1：AABB（Axis-Aligned Bounding Box）——最简单但旋转物体不准
-   - v2：OBB（Oriented Bounding Box，有向包围盒）——支持旋转物体的精确碰撞
-   - v3：凸包（Convex Hull）——在 OBB 基础上进一步优化，用物体实际轮廓的点集构造凸包，碰撞判定更精确
-   - 凸包 vs OBB：OBB 对倾斜/细长物体仍有空隙区域，凸包贴合实际形状，碰撞反馈更自然
-   - 实现：服务端用凸包点集做分离轴测试（SAT），前端同样实现在 Logic 共享层
-6. **双轨动画管理**
-   - MMD + FBX 分开的动画状态机
-   - 每类模型有自己的 Idle → Walk 切换逻辑
-7. **坑**
-   - 🕳️ **warm container 定时器残留** → 代次守卫解决
-   - 🕳️ **AABB 碰撞不够** → 升级到 OBB → 再升级到凸包
-   - 🕳️ **OBB 仍有空隙** → 凸包消除误判
-   - 🕳️ **AI giantess 寻路卡死**：路径规划在服务端 setInterval 里阻塞后续 tick
-
----
-
-### P12 — Phase 7：状态管理演进
-
-**字数：** 500-5000（代码不计入）
-
-**内容清单：**
-1. **v1：Immutable.js Map**
-   - 函数式不可变状态，回滚友好
-   - 但体积大（~50KB gzip）
-   - 全套 Immutable API 学习成本
-2. **v2：自制 ImmutableHashMap**
-   - 去 Immutable.js 依赖
-   - HashMap 类型实现
-   - 🕳️ **hash 冲突 bug**：自制实现不完善
-3. **v3：回归 Js.Dict**
-   - 原生对象，性能够用
-   - 代码更简单
-   - 🕳️ **类型安全性不够** → 包装函数
-4. **v4（最终）：TransformStore + VisualStore + RenderFrameData**
-   - 按职责拆 store
-   - SoA（Struct of Arrays）布局：改善 cache locality，减少 GC 压力
-   - **设计目标：为 WebGPU + 多线程就绪**
-     - TransformStore 的 Float32Array 直接映射 GPU StorageBuffer
-     - VisualStore 的 flags Uint8Array 位字段低频同步
-     - 固定 stride（64 字节实体槽）→ 一键切换 SharedArrayBuffer
-     - IRenderer.syncFromEntityStore() 批量同步，Worker 可用
-   - 适合前端每帧遍历更新大量对象的场景
-5. **每次演进的原因和决策过程**（表）
-
----
-
-### P13 — Phase 8：SCF 部署 6 连环坑
+### P10 — SCF 部署 6 连环坑
 
 **字数：** 500-5000（代码不计入）
 
@@ -290,72 +208,29 @@
 1. **部署迭代 v0-v4**
    - v0：basic1 时代——手打 zip + 控制台上传（总挂）
    - v1：deploy-scf.js 一键部署脚本
-   - v2：production + test 双环境（url 参数控制）
-   - v3：room1 + room2 双实例并发（各 2 人，共 4 人）
+   - v2：production + test 双环境
+   - v3：room1 + room2 双实例
    - v4：BDD 测试锁定部署质量
-2. **6 个部署坑（这是核心内容）**
-   - 🕳️ **坑1：undici@7 File is not defined**
-     - 根因：`@cloudbase/functions-framework` 链式依赖 undici@7，需要 Node 20，SCF 只有 Node 18
-     - 解决：去掉整个框架，直接启动 TSRPC HttpServer
-   - 🕳️ **坑2：zip 目录深度**
-     - 根因：zip 中扁平结构导致 `../../../logic/src` 解析到根目录外
-     - 解决：zip 内加 `svc/` 子目录做深度补偿
-   - 🕳️ **坑3：scf_bootstrap 无执行权限**
-     - 根因：Windows `Compress-Archive` 不保留 Unix `+x`
-     - 解决：.NET `ZipArchive` reflection 设 ExternalAttributes
-   - 🕳️ **坑4：ESM vs CJS 冲突**
-     - 根因：`@rescript/runtime` 的 package.json 有 `"type": "module"` → require() 报 ERR_REQUIRE_ESM
-     - 解决：复制时删掉该文件
-   - 🕳️ **坑5：Module._load hook 不可靠**
-     - 根因：想用 hook 拦截 require 暴露 bundle 闭包模块
-     - 解决：改为直接注入 node_modules
-   - 🕳️ **坑6：warm container 定时器残留**
-     - 根因：冷启动后旧 setInterval 继续跑
-     - 解决：代次守卫 generation++
+2. **6 个部署坑（核心内容）**
+   - 🕳️ 坑1：undici@7 File is not defined——去掉 functions-framework 直接启动 TSRPC
+   - 🕳️ 坑2：zip 目录深度——加 svc/ 子目录
+   - 🕳️ 坑3：scf_bootstrap 无执行权限——ZipArchive 设 ExternalAttributes
+   - 🕳️ 坑4：ESM vs CJS 冲突——删除 package.json 的 "type": "module"
+   - 🕳️ 坑5：Module._load hook 不可靠——直接注入 node_modules
+   - 🕳️ 坑6：warm container 定时器残留——代次守卫
 3. **每个坑的 E2E 测试锁定**
-   - 7 场景 BDD 覆盖：服务可达、WS 连接、无 ESM 错误等
-   - 每次部署前自动运行
+   - 7 场景 BDD 覆盖
 4. **Warm Container 生命周期**
-   - SCF 空闲 15 分钟回收实例（可配），下次请求冷启动
-   - 冷启动耗时 ~1-3 秒，影响第一局匹配体验
-   - **热保活策略**：心跳 keep-alive 请求每 2s 发一次（生产），避免回收
-   - 双实例（room1 + room2）各自独立 warm，一个回收不影响另一个
-   - 🕳️ **冷启动瞬间并发**：两个玩家同时连入 → 两个新实例同时初始化 → 可能冲突 → 需排队锁
-5. **生产运维与监控**
-   - **日志策略**：SCF 自带日志服务，CLS 采集 stdout/stderr，保留 7 天
-   - **实时调试**：gts-logs 自动拉取最近 100 条日志，按 room/match 过滤
-   - **告警规则**：实例崩溃自动重启（SCF 自带），无玩家时自动缩容
-   - **版本回退**：deploy-scf.js 支持指定版本号回退，一键还原旧版本
-   - **room→match 重启依赖**：room 重启后 match 的 WS 连接断开，必须连带重启 match
+   - SCF 空闲 15 分钟回收，冷启动 ~1-3 秒
+   - 生产环境 2 秒心跳保活
+   - 双实例各自 warm，一个回收不影响另一个
+5. **自动化部署流程**
+   - deploy-scf.js：打包→上传→发布→BDD 验证
+   - 版本回退、日志策略、room→match 重启依赖
 
 ---
 
-### P14 — Phase 9：开闭原则重构
-
-**字数：** 500-5000（代码不计入）
-
-**内容清单：**
-1. **核心约束（🟢 通行标准）**
-   - 多人功能不能改动任何单机代码路径
-   - 新增多人功能 = 扩展现有架构（新文件/新模块），不做"if 多人 else 单机"
-2. **实现方式**
-   - `frontend/src/business_layer/multiplayer/` — 多人专属业务逻辑
-   - `MultiplayerLoop.ts` + `ManageScene.ts`
-   - 入口通过 URL 参数决定加载哪个路径
-3. **开闭原则在 AI 协作中的价值**
-   - AI 改别人代码容易"不知深浅地破坏"
-   - 单机路径 zero-touch = 给 AI 一个安全的操作空间
-   - 这是 AI 时代架构设计的核心思想
-4. **mpFrameSkip 隔帧多人更新**
-   - 多人逻辑 15fps，渲染 60fps
-   - state.multiplayer 统一管理多人帧率
-5. **坑**
-   - 🕳️ **多人组件和单机组件同场景渲染冲突**
-   - 🕳️ **多人退房后状态残留**：`dispose()` 未遍历清理所有 ref/flag
-
----
-
-### P15 — Phase 10：WebGPU 与多线程调研方案
+### P11 — WebGPU 与多线程调研方案
 
 **字数：** 500-5000（代码不计入）
 
@@ -411,9 +286,9 @@
 
 ---
 
-## 工作流进化
+## 工作流进化（P12-P12）
 
-### P16 — 纯 AI 对话时代 → OpenCode 引入
+### P12 — AI 辅助编程 → OpenCode 引入
 
 **字数：** 500-5000（代码不计入）
 
@@ -439,7 +314,7 @@
 
 ---
 
-### P17 — OpenClaw 调度层 + Skill 固化 + 自动部署
+### P13 — OpenClaw 调度层 + Skill 固化 + 自动部署
 
 **字数：** 500-5000（代码不计入）
 
@@ -464,7 +339,7 @@
 
 ---
 
-### P18 — E2E 自测与根因修复
+### P14 — E2E 自测与根因修复
 
 **字数：** 500-5000（代码不计入）
 
@@ -488,7 +363,7 @@
 
 ---
 
-### P19 — 完整 Vibe Coding 工作流全景
+### P15 — 完整 Vibe Coding 工作流全景
 
 **字数：** 500-5000（代码不计入）
 
@@ -518,7 +393,7 @@
 
 ---
 
-### P20 — Vibe Coding 经验和教训合集
+### P12 — Vibe Coding 经验和教训合集
 
 **字数：** 500-5000（代码不计入）
 
@@ -551,7 +426,7 @@
 
 ## 知识管理
 
-### P21 — 三层编码规则体系
+### P13 — 三层编码规则体系
 
 **字数：** 500-5000（代码不计入）
 
@@ -583,7 +458,7 @@
 
 ---
 
-### P22 — 重构标准 🐛🔴🟡🟢 逐条拆解
+### P14 — 重构标准 🐛🔴🟡🟢 逐条拆解
 
 **字数：** 500-5000（代码不计入）
 
@@ -620,7 +495,7 @@
 
 ---
 
-### P23 — Specs、变更管理与方案体系
+### P15 — Specs、变更管理与方案体系
 
 **字数：** 500-5000（代码不计入）
 
@@ -645,7 +520,7 @@
 
 ---
 
-### P24 — 决策记录精要（ADR）
+### P12 — 决策记录精要（ADR）
 
 **字数：** 500-5000（代码不计入）
 
@@ -668,7 +543,7 @@
 
 ---
 
-### P25 — 测试策略体系
+### P13 — 测试策略体系
 
 **字数：** 500-5000（代码不计入）
 
@@ -699,7 +574,7 @@
 
 ---
 
-### P26 — Token 优化全攻略
+### P14 — Token 优化全攻略
 
 **字数：** 500-5000（代码不计入）
 
@@ -736,7 +611,7 @@
 
 ---
 
-### P27 — 记忆管理体系
+### P15 — 记忆管理体系
 
 **字数：** 500-5000（代码不计入）
 
@@ -768,7 +643,7 @@
 
 ---
 
-### P28 — Agent Brief 与 OpenCode 调度规范
+### P12 — Agent Brief 与 OpenCode 调度规范
 
 **字数：** 500-5000（代码不计入）
 
@@ -802,7 +677,7 @@
 
 ---
 
-### P29 — 部署与服务管理
+### P13 — 部署与服务管理
 
 **字数：** 500-5000（代码不计入）
 
@@ -856,7 +731,7 @@
 
 ---
 
-### P30 — OpenClaw 工具链全景
+### P14 — OpenClaw 工具链全景
 
 **字数：** 500-5000（代码不计入）
 
@@ -901,7 +776,7 @@
 
 ---
 
-### P31 — 前端性能优化（含 AI 素材管线）
+### P15 — 前端性能优化（含 AI 素材管线）
 
 **字数：** 500-5000（代码不计入）
 
@@ -948,7 +823,7 @@
 
 ---
 
-### P32 — 通信可靠性与错误处理模式
+### P12 — 通信可靠性与错误处理模式
 
 **字数：** 500-5000（代码不计入）
 
@@ -984,7 +859,7 @@
 
 ---
 
-### P33 — 教训、反模式与设计模式
+### P13 — 教训、反模式与设计模式
 
 **字数：** 500-5000（代码不计入）
 
@@ -1033,7 +908,7 @@
 
 ## 总结
 
-### P34 — 给下一个 Vibe Coder 的起步指南
+### P14 — 给下一个 Vibe Coder 的起步指南
 
 **字数：** 500-5000（代码不计入）
 
@@ -1055,11 +930,11 @@
    - 你不再写代码，你定义 Specs、验收、总结
    - 剩下的 AI 做
    - 问题在于"定义正确的事"，而不是"高效做错的事"
-5. **从 P1-P4 外部视角到 P5-P34 内部实战的呼应**
+5. **从 P1-P4 外部视角到 P5-P14 内部实战的呼应**
    - Pieter Levels 的 3 天（P1）
    - Vibe Jam 的行业验证（P2）
    - AI 方法论（P3）
-   - 能做/不能做的边界（P4 + P33）
+   - 能做/不能做的边界（P4 + P13）
 6. **一句话总结**
    > 先把 demo 跑通，再想架构；先用状态同步，再想优化；先定义 Specs，再让 AI 干活。
 
@@ -1074,9 +949,9 @@
 | P5 总览 | 1 | 500-5000 |
 | 时间线 P6-P14 | 9 | 500-5000 |
 | P15 WebGPU/多线程调研 | 1 | 500-5000 |
-| 工作流 P16-P20 | 5 | 500-5000 |
-| 知识管理 P21-P33 | 13 | 500-5000 |
-| 总结 P34 | 1 | 500-5000 |
+| 工作流 P12-P12 | 5 | 500-5000 |
+| 知识管理 P13-P17 | 13 | 500-5000 |
+| 总结 P14 | 1 | 500-5000 |
 | **合计** | **35** | |
 
 全部文章字数控制在 500-5000 字范围内（代码不计入字数限制）。每篇见本大纲即可直接开写。

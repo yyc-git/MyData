@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（十八）—— E2E 自测与根因修复
+# Vibe Coding 多人游戏（十四）—— E2E 自测与根因修复
 
 > **📚 系列索引**
 > 
@@ -139,4 +139,4 @@ OpenCode 的 `gts-dev-fix` Skill 被设计为：
 
 下一期讲 **完整 Vibe Coding 工作流全景**——把前 3 篇串起来，画一张图。
 
-**下一篇：[Vibe Coding 多人游戏（十九）—— 完整 Vibe Coding 工作流全景](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十五）—— 完整 Vibe Coding 工作流全景](https://www.cnblogs.com/chaogex/p/21195307)**

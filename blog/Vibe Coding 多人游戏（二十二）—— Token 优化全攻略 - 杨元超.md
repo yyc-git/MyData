@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十六）—— Token 优化全攻略
+# Vibe Coding 多人游戏（二十二）—— Token 优化全攻略
 
 > **📚 系列索引**
 > 
@@ -84,6 +84,6 @@ reserveTokens: 30000   # 200k - 30k = 170k 触发 compaction
 
 ---
 
-下期讲 **P27：记忆管理体系**——33 个锚点词怎么帮 AI 回忆项目细节。
+下期讲 **P23：记忆管理体系**——33 个锚点词怎么帮 AI 回忆项目细节。
 
-**下一篇：[Vibe Coding 多人游戏（二十七）—— 记忆管理体系](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十三）—— 记忆管理体系](https://www.cnblogs.com/chaogex/p/21195307)**

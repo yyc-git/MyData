@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十四）—— 决策记录精要（ADR）
+# Vibe Coding 多人游戏（二十）—— 决策记录精要（ADR）
 
 > **📚 系列索引**
 > 
@@ -64,6 +64,6 @@ Node.js 的 hook API 在不同版本下行为不一致。不要和运行时斗�
 
 ---
 
-下期讲 **P25：测试策略体系**——单元/集成/E2E 三层的具体配置。
+下期讲 **P21：测试策略体系**——单元/集成/E2E 三层的具体配置。
 
-**下一篇：[Vibe Coding 多人游戏（二十五）—— 测试策略体系](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十一）—— 测试策略体系](https://www.cnblogs.com/chaogex/p/21195307)**

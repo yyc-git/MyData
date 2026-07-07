@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十八）—— Agent Brief 与 OpenCode 调度规范
+# Vibe Coding 多人游戏（二十四）—— Agent Brief 与 OpenCode 调度规范
 
 > **📚 系列索引**
 > 
@@ -73,6 +73,6 @@ Delta Specs：先确认再开工
 
 ---
 
-下期讲 **P29：部署与服务管理**——deploy-scf.js、双环境、日志抓取。
+下期讲 **P25：部署与服务管理**——deploy-scf.js、双环境、日志抓取。
 
-**下一篇：[Vibe Coding 多人游戏（二十九）—— 部署与服务管理](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十五）—— 部署与服务管理](https://www.cnblogs.com/chaogex/p/21195307)**

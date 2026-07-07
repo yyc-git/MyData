@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（三十三）—— 教训、反模式与设计模式
+# Vibe Coding 多人游戏（二十九）—— 教训、反模式与设计模式
 
 > **📚 系列索引**
 > 
@@ -77,4 +77,4 @@
 
 下期 **最后一篇：给下一个 Vibe Coder 的起步指南。**
 
-**下一篇：[Vibe Coding 多人游戏（三十四）—— 给下一个 Vibe Coder 的起步指南](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（三十）—— 给下一个 Vibe Coder 的起步指南](https://www.cnblogs.com/chaogex/p/21195307)**

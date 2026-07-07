@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（十三）—— Phase 8：SCF 部署 6 连环坑
+# Vibe Coding 多人游戏（十）—— SCF 部署 6 连环坑
 
 > **📚 系列索引**
 > 
@@ -173,6 +173,6 @@ SCF 实例有 15 分钟空闲回收机制。冷启动约 1-3 秒，影响第一�
 
 ---
 
-下期讲 **Phase 9：开闭原则重构**——单机代码一行不改，多人代码独立目录，这是怎么做到的。
+下期讲 **P11：WebGPU 与多线程调研与架构就绪**——为未来三线程架构铺路。
 
-**下一篇：[Vibe Coding 多人游戏（十四）—— Phase 9：开闭原则重构](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十一）—— WebGPU 与多线程调研与架构就绪](https://www.cnblogs.com/chaogex/p/21195307)**

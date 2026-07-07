@@ -227,6 +227,6 @@ function setPlayerAnimationState(username, isMoving) {
 
 ---
 
-从 new_basic2 的状态同步 Demo 到 Lerna Monorepo 四包结构，中间只隔了一周。下期讲 **Phase 3：Monorepo 重构**——当代码开始乱飞时，怎么用工程化把它收住。
+从 new_basic2 的状态同步 Demo 到 Lerna Monorepo 四包结构，中间只隔了一周。下期讲 **P8：大重构**——Monorepo + 双服务 + Logic 共享层 + 开闭原则，一天内全部落地。
 
-**下一篇：[Vibe Coding 多人游戏（八）—— Phase 3：Monorepo 重构](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（八）—— 大重构：Monorepo + 双服务 + Logic 共享层 + 开闭原则](https://www.cnblogs.com/chaogex/p/21195307)**

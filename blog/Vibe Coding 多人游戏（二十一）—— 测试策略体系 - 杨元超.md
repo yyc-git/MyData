@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十五）—— 测试策略体系
+# Vibe Coding 多人游戏（二十一）—— 测试策略体系
 
 > **📚 系列索引**
 > 
@@ -65,6 +65,6 @@ Feature: Room Lifecycle
 
 ---
 
-下期讲 **P26：Token 优化全攻略**——月费从 2000 到 100 的实操方案。
+下期讲 **P22：Token 优化全攻略**——月费从 2000 到 100 的实操方案。
 
-**下一篇：[Vibe Coding 多人游戏（二十六）—— Token 优化全攻略](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二十二）—— Token 优化全攻略](https://www.cnblogs.com/chaogex/p/21195307)**

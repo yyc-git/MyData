@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（二十）—— Vibe Coding 经验和教训合集
+# Vibe Coding 多人游戏（十六）—— Vibe Coding 经验和教训合集
 
 > **📚 系列索引**
 > 
@@ -116,6 +116,6 @@ AI 协作环境下，**过早抽象是最大的敌人**。保持简单直接，�
 | Skill | 告诉 AI 怎么做 | 描述"为什么" |
 | 测试 | 锁定行为、防止 regression | 模拟假逻辑 |
 
-下一期开始知识管理系列——**P21：三层编码规则体系 + agent-context.md**
+下一期开始知识管理系列——**P17：三层编码规则体系 + agent-context.md**
 
-**下一篇：[Vibe Coding 多人游戏（二十一）—— 三层编码规则体系 + agent-context.md](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十七）—— 三层编码规则体系 + agent-context.md](https://www.cnblogs.com/chaogex/p/21195307)**

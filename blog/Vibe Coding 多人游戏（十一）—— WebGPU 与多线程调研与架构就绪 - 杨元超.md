@@ -1,4 +1,4 @@
-# Vibe Coding 多人游戏（十五）—— WebGPU 与多线程调研与架构就绪
+# Vibe Coding 多人游戏（十一）—— WebGPU 与多线程调研与架构就绪
 
 > **📚 系列索引**
 > 
@@ -181,4 +181,4 @@ Phase 5（远期）：Render Worker
 
 下期进入**工作流进化**板块——讲 Vibe Coding 本身的工作流怎么从手动复制粘贴进化到全自动 AI 调度。
 
-**下一篇：[Vibe Coding 多人游戏（十六）—— 纯 AI 对话时代 → OpenCode 引入](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（十二）—— AI 辅助编程 → OpenClaw 全自动 → OpenCode 引入](https://www.cnblogs.com/chaogex/p/21195307)**
