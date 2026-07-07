@@ -227,26 +227,28 @@ const OFF_ANIM_TGT = 25  // u8  — 过渡目标动画索引
 const OFF_ANIM_CF  = 28  // f32 — 动画过渡进度 0-1
 // 32 bytes 预留扩展空间
 
-export class EntityStore {
-    private buffer: ArrayBuffer
-    private f32: Float32Array    // 4字节对齐读取 f32
-    private u8: Uint8Array       // 1字节对齐读取 u8
+type EntityStore = {
+    buffer: ArrayBuffer
+    f32: Float32Array    // 4字节对齐读取 f32
+    u8: Uint8Array       // 1字节对齐读取 u8
+}
+
+// 创建 EntityStore —— 纯函数，无副作用
+function createEntityStore(sharedBuffer?: ArrayBuffer): EntityStore {
+    const buf = sharedBuffer ?? new ArrayBuffer(ENTITY_STRIDE * MAX_ENTITIES)
+    return { buffer: buf, f32: new Float32Array(buf), u8: new Uint8Array(buf) }
+}
+
+// set / get 都是纯函数——state in, state out
+// 虽然是 in-place 写 typed array（性能必须），但接口设计是函数式的
+function setPosition(store: EntityStore, slot: number, x: number, y: number, z: number): void {
+    const off = slot * (ENTITY_STRIDE / 4)
+    store.f32[off + OFF_POS_X/4] = x
+    store.f32[off + OFF_POS_Y/4] = y
+    store.f32[off + OFF_POS_Z/4] = z
+}
     
-    constructor(sharedBuffer?: ArrayBuffer) {
-        // 将来切 SAB 只改这里
-        this.buffer = sharedBuffer ?? new ArrayBuffer(ENTITY_STRIDE * MAX_ENTITIES)
-        this.f32 = new Float32Array(this.buffer)
-        this.u8 = new Uint8Array(this.buffer)
-    }
-    
-    setPosition(slot: number, x: number, y: number, z: number) {
-        const off = slot * (ENTITY_STRIDE / 4)
-        this.f32[off + OFF_POS_X/4] = x
-        this.f32[off + OFF_POS_Y/4] = y
-        this.f32[off + OFF_POS_Z/4] = z
-    }
-    
-    getPosition(slot: number): [number, number, number] {
+function getPosition(store: EntityStore, slot: number): [number, number, number] {
         const off = slot * (ENTITY_STRIDE / 4)
         return [this.f32[off], this.f32[off+1], this.f32[off+2]]
     }
