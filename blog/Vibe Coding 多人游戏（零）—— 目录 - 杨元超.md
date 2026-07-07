@@ -56,7 +56,7 @@ WebGPU/多线程调研（P15）
 
 | # | 阶段 | 标题 | 字数 | 一句话 |
 |---|------|------|------|--------|
-| 6 | Phase 1 | basic1 帧同步（Lockstep） | 1500-3000 | 第一个 Demo，WebSocket + Immutable.js + 浮点数噩梦 |
+| 6 | Phase 1 | basic1 帧同步（Lockstep） | 1500-3000 | 第一个多人原型，Lockstep + 浮点数噩梦 |
 | 7 | Phase 2 | 切换到状态同步 + TSRPC | 1500-3000 | 为什么放弃帧同步，服务端权威模型建立 |
 | 8 | Phase 3 | Monorepo 重构 | 1500-3000 | demos/ → packages/，Lerna 四包结构 |
 | 9 | Phase 4 | 双服务架构 | 1500-3000 | room（WS）+ match（HTTP）拆分，职责分离 |

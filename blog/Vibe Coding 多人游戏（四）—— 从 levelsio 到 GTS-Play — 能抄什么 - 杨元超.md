@@ -12,9 +12,9 @@
 
 ## GTS-Play 是什么
 
-GTS-Play 是一个浏览器 3D 多人游戏，主题是"巨大娘（Giantess）"——玩家以大/小两种角色在场景中共存互动。它基于 Three.js + React 构建，使用 TSRPC（WebSocket）实现多人联网，采用服务端权威的状态同步架构。
+GTS-Play 是一个浏览器 3D 多人游戏，主题是"巨大娘（Giantess）"——玩家以大/小两种角色在场景中共存互动。它建立在成熟的单机产品「巨大娘的玩耍」之上——那是一个单人 H5 3D 肉鸽动作射击游戏，已迭代 30+ 版本、100k+ 行代码，发布 v1.0 正式版（最新 v2.0-alpha.x）。多人在线版本基于 Three.js + React 构建，使用 TSRPC（WebSocket）实现联网，采用服务端权威的状态同步架构。
 
-项目最初用 Meta3D 引擎搭建了 basic1 Demo（帧同步原型），后迁移到 Three.js 重构为正式多人版本。代码组织为 Lerna monorepo，包含四个核心包：
+多人联机部分从 basic1 Demo（帧同步原型）起步，后迁移到 Three.js 重构为正式版本。代码组织为 Lerna monorepo，包含四个核心包：
 - `packages/frontend/` — Three.js 前端渲染与交互
 - `packages/room-service/` — 游戏服务端（WebSocket）
 - `packages/match-service/` — 匹配服务端（HTTP）
