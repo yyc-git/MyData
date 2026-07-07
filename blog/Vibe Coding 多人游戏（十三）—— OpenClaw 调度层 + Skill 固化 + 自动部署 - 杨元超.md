@@ -109,11 +109,12 @@ Skill 不是普通的文档。普通的 `deploy.md` 15 步部署指南，人读�
 
 ## Skill 全家桶
 
-我们一共写了 16 个 Skill，覆盖了从提交代码到部署上线的全过程：
+核心 Skill 覆盖了从开发到部署的全过程：
 
 | Skill 分组 | 包含 | 说明 |
 |-----------|------|------|
 | **开发** | gts-dev-feat, gts-dev-fix, gts-dev-refactor | 新功能、修 bug、重构，都引用 gts-dev-workflow |
+| **验收** | gts-acceptance | 自动化验收流水线（TDD→E2E→自动部署） |
 | **测试** | gts-e2e-test, gts-e2e-auto, gts-e2e-perf | 手动 E2E、全自动 E2E、性能测试 |
 | **部署** | gts-deploy, gts-service, gts-logs | 一键部署、服务启停、日志抓取 |
 | **维护** | gts-save-flow, gts-save-memory, gts-git-commit | 全流程保存、记忆保存、git 提交 |
@@ -127,6 +128,7 @@ Skill 不是普通的文档。普通的 `deploy.md` 15 步部署指南，人读�
 
 | Skill | 功能 | 触发词 |
 |-------|------|--------|
+| gts-acceptance | 自动化验收流水线 | 验收 |
 | gts-dev-feat | 新功能开发 | feat: |
 | gts-dev-fix | Bug 修复 | fix: |
 | gts-dev-refactor | 代码重构 | refactor: |
@@ -137,7 +139,7 @@ Skill 不是普通的文档。普通的 `deploy.md` 15 步部署指南，人读�
 | gts-save-flow | 全流程保存（审核→测试→笔记→提交） | 保存 |
 | gts-code-review | 代码审核 | 代码审核 / review |
 
-其余 7 个为辅助性 Skill（gts-e2e-perf 性能测试、gts-service 服务启停、gts-save-memory 记忆保存、gts-git-commit 单独提交、gts-analysis 架构分析、gts-recall 记忆回溯、gts-stop 紧急停止），不单独列出。
+其余 Skill（如 gts-e2e-perf、gts-service、gts-save-memory、gts-git-commit、gts-analysis、gts-recall、gts-stop）为辅助性质（gts-e2e-perf 性能测试、gts-service 服务启停、gts-save-memory 记忆保存、gts-git-commit 单独提交、gts-analysis 架构分析、gts-recall 记忆回溯、gts-stop 紧急停止），不单独列出。
 
 ---
 
@@ -229,9 +231,178 @@ Brief 不用逐条手写——OpenClaw 从 Skill 模板 + 项目上下文自动�
 
 ---
 
+### gts-acceptance
+
+```markdown
+---
+name: "gts-acceptance"
+description: "循环改→测→验直到通过或超时，支持多问题顺序修复，TDD集成+E2E验收，通过后自动部署"
+---
+
+# 验收流程（硬性操作规程）
+
+> 触发词：兄弟说「验收：<标准>」或「验收」。
+> 自动循环模式：Specs 发现 → 逐个问题走 TDD 修复（注入 Specs）→ 全量集成测试 → Specs 覆盖验证 → E2E 自动验收 → 自动部署 → 双通道通知（含覆盖统计）。
+> 全程自动化：执行 `gts-dev-fix` 时不需要兄弟确认。
+> ⚠️ 验收结束时必须执行双通道通知，禁止只跑完不说话。
+
+---
+
+## 🔴 两级测试流程规则（本 Skill 所有步骤共用）
+
+### 区分
+
+| 层级 | 工具 | 成本 | 验证内容 |
+|------|------|------|---------|
+| 集成测试 | BDD / jest | 低（秒级） | 代码层逻辑，纯函数/逻辑层/API 流程 |
+| 自动测试 | E2E Playwright | 高（分钟级） | 浏览器层完整渲染 + 用户交互 |
+
+### 流程纪律
+
+**集成测试 > E2E 自动测试** — 因为集成测试成本更低，应优先使用。
+
+```
+Bug → 加日志 → 写/改集成测试复现 bug → 收集数据 → 调度 OpenCode Pro 分析根因
+→ 修改测试使其按根因场景真实失败（RED）
+→ 调度 OpenCode 修复代码 → 集成测试全绿（GREEN）
+→ 调度 OpenCode 写 E2E 测试脚本 → 跑 E2E
+→ ✅ E2E 通过 → 自动部署 → 双通道通知
+→ ❌ E2E 失败 → 调度 OpenCode Pro 分析原因 → 修 → 重测
+```
+
+### 线上 bug 的特殊处理
+
+E2E 只跑线上环境，本地不跑。
+
+| 类型 | 处理 |
+|------|------|
+| 线上 bug | 线上 E2E 复现 → 截图+日志 → 调度 OpenCode Pro 分析 |
+| 本地 bug | 本地 E2E 复现 |
+| 线上部署/环境 bug | 线上 E2E |
+
+## 通知协议（本 Skill 所有步骤共用）
+
+验收结束时执行**双通道通知**：
+
+### 1️⃣ 桌面通知
+```bash
+msg * "<30字摘要>"
+```
+
+### 2️⃣ 飞书通知（可选，仅在线 bug 或部署时）
+```json
+{
+  "kind": "agentTurn",
+  "message": "<通知内容（≤10字）>",
+  "delivery": { "mode": "announce", "channel": "feishu", "to": "user:ou_..." }
+}
+```
+
+### 通知纪律
+- 飞书通知内容 **≤10 字**
+- 桌面通知必须调用 `msg *`
+- 结果通知在验收结束或部署完成时发送
+
+---
+
+## E2E 验收协议
+
+### 适用的测试脚本
+
+- E2E headless（CI 用）：`test/e2e/auto/*.cjs`
+- E2E headful（眼睛看）：用 Playwright `headless: false`
+- 验收流程 **优先用 headless**，不打断不确认
+
+### 脚本结构
+
+```
+登录 → 创建房间 → 加入 → 准备 → 开始游戏 → 操作 → DebugEndGame → 验证 UI 元素
+→ 关闭弹窗 → 返回房间 → 再次进入 → 截图
+```
+
+---
+
+## 🔴🔴🔴 TDD 纪律 — 先让测试失败（2026-07-06 新增）
+
+验收流程中必须先让集成测试因 bug 真实失败，再修复代码使其通过。
+
+- **禁止用模拟函数代替实际代码做集成测试**
+- **正确做法**：测试必须直接调用被测试的实际代码/组件，在不修复时因 bug 真实 ❌ 失败
+- 跟「先汇报再继续」「等确认发通知」「入口检查」同级最高优先级
+
+---
+
+## 流程（流水线 — 自动执行，不需要兄弟确认）
+
+### Step A: 识别问题
+- 区分场景：本地验收 / 线上 bug
+- 依据 bug 类型决定测试策略
+
+### Step B: 集成测试（RED）
+- 根因分析 → 调度 OpenCode Pro（根因分析交给 OpenCode Pro）
+- 创建/修改 BDD 集成测试（.feature + .steps.ts），调用实际代码
+- 确认测试因 bug 真实失败（RED ❌）
+
+### Step C: 修复（GREEN）
+- 调度 OpenCode 修复代码
+- 集成测试全绿 ✅
+
+### Step D: E2E 自动验收
+- 运行 Playwright headless E2E 脚本
+- 验证用户可见的 UI 行为
+- E2E 失败 → 分析原因 → 修 → 重测
+
+### Step E: 自动部署（2026-07-06 新增）
+- E2E 本地通过后 → **自动部署**，不询问兄弟
+- 部署失败 → 报错，问兄弟要不要修
+- 规则来源：兄弟明确说「以后本地e2e测试通过后，自动去部署，不要问我」
+
+### Step F: 输出结果 + 双通道通知
+
+**通知时机：** 验收结束时立即执行。
+
+| 结果 | 桌面消息 | 飞书通知（≤10字） |
+|------|---------|-----------------|
+| E2E 全绿 + 部署成功 | ✅ ✅ | `验收通过+已部署` |
+| E2E 失败 | ❌ | `验收未通过` |
+| 部署失败 | ⚠️ 部署失败 | `部署失败` |
+
+通知内容必须包含：
+- E2E 结果（全绿/失败）
+- 测试文件/功能
+- 部署结果
+
+---
+
+## 验收优化记录
+
+### 历史教训（重要！）
+1. **不要模拟**：集成测试不要 mock 实际代码（replayState / MockWsClient），必须调用 `readState` / `writeState` 真实操作
+2. **验收流程全程自动化**：E2E 期间不打断不确认，不要问「我要跑了哦？」
+3. **验收结束必须通知**：禁止只跑完不说话（2026-06-26 规则收紧）
+4. **TDD 纪律**：必须先 RED 失败再 GREEN，禁止跳过（2026-07-06 新增）
+5. **根因分析交给 OpenCode Pro**：不自己分析根因（2026-07-06 新增）
+6. **E2E 通过后自动部署**：不询问，直接部署（2026-07-06 兄弟要求）
+
+---
+
+## 附录：多 bug 顺序修复
+
+如果兄弟报告了多个 bug，用一个验收流程按顺序逐个修复：
+
+1. 所有 bug 列清单
+2. 按兄弟指定的顺序逐个走 Step B→C→D→E
+3. 修复完最后一个再通知
+
+## 附录：参考文件
+- E2E helper: `test/e2e/e2e-helpers.cjs`
+- 现有 E2E: `test/e2e/auto/*.cjs`
+
+```
+
 ## 附录：核心 Skill 完整定义
 
-以下为 9 个核心 Skill 的完整 `SKILL.md` 文件内容：
+以下为 10 个核心 Skill 的完整 `SKILL.md` 文件内容：
 
 ### gts-dev-feat
 
