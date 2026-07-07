@@ -218,7 +218,7 @@ Pieter 的火爆，不是因为 fly.pieter.com 画面多好、玩法多创新。
 - [drone.pieter.com — 同款续作](https://drone.pieter.com/)
 - [domaingang.com — 域名被 squat 报道](https://domaingang.com/domain-news/fly-pieter-com-popular-ai-coded-fly-game-now-squatted/)
 
-**下一篇：[Vibe Jam 2026 技术地图](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（二）—— Vibe Jam 2026 技术地图](https://www.cnblogs.com/chaogex/p/21195307)**
 
 
 ---

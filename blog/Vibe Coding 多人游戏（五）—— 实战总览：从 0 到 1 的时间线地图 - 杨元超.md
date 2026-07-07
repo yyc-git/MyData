@@ -130,4 +130,4 @@ P6 ─── 帧同步方案详解 ──────→ P7 ─── 状态同�
 
 ---
 
-**下一篇：[Phase 1：basic1 帧同步（Lockstep）](https://www.cnblogs.com/chaogex/p/21195307)——第一个多人 Demo，WebSocket + Immutable.js + 浮点数噩梦**
+**下一篇：[Vibe Coding 多人游戏（六）—— Phase 1：basic1 帧同步（Lockstep）](https://www.cnblogs.com/chaogex/p/21195307)——第一个多人 Demo，WebSocket + Immutable.js + 浮点数噩梦**

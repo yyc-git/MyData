@@ -221,7 +221,7 @@ Start with simple geometry (boxes), we'll replace assets later
 - [Julius — How I Built a Multiplayer Drawing Game in 3 Days](https://medium.com/@julius.dev/how-i-built-a-multiplayer-drawing-game-in-3-days-as-a-frontend-beginner-using-cursor-62840e7d3f1d)（Medium, 2025-07-23，需会员）
 - [YouTube — @levelsio made a flying sim with AI so I hacked it with AI](https://www.youtube.com/watch?v=cvtktdSdIrE)
 
-**下一篇：[从 levelsio 到 GTS-Play — 能抄什么](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（四）—— 从 levelsio 到 GTS-Play — 能抄什么](https://www.cnblogs.com/chaogex/p/21195307)**
 
 
 ---

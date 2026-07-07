@@ -219,7 +219,7 @@ Vibe Jam 首席评委 **Tim Soret**（Odd Tales 联合创始人，《The Last Ni
 - [ElevenLabs — AI 语音生成](https://elevenlabs.io/)
 - Vibe Jam 排行榜页面直接抓取
 
-**下一篇：[AI 做多人游戏的实操方法论](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（三）—— AI 做多人游戏的实操方法论](https://www.cnblogs.com/chaogex/p/21195307)**
 
 
 ---

@@ -582,7 +582,7 @@
    - **beforeunload-disconnect**（替代 sendExit，WS 断开自动退出）
    - **SCF 部署方案**（直接注入 node_modules > Module._load hook）
    - **单人直接进入游戏**（URL 参数指定角色类型）
-   - **最多 4 人验收状态**（room1+room2 各 2 人）
+   - **线上 2 人限制**（无 session 管理，room1+room2 各自独立）
    - **host-transfer Phase3**（房主转移后状态恢复）
 3. **反面决策（选了后来后悔的）**
    - 帧同步（basic1）→ 换状态同步（new_basic2）
