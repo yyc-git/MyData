@@ -20,11 +20,9 @@
 
 为什么要在 MVP 还没完全跑通的时候就开始调研 WebGPU 和 Worker 线程？
 
-答案来自之前的一个教训。在做 Phase 7（状态同步）的时候，我们把 `packages/logic/` 里的状态管理用 ReScript 重写，选择了 `ImmutableHashMap`（基于 `Js.Dict`）来替代 Immutable.js 的全套 Map/List。当时只是觉得 Immutable.js 太重、AI 对 `setIn` 的 key path 容易出错。
+答案很简单：**游戏本来就要支持 WebGPU 和多线程。** 从单机版开始这个规划就在路线图上——单机版有 GPU Skin 和 EffectComposer 后处理管线的成功经验，多人版不可能永远停留在 WebGL。这次趁着重写的机会一步到位做好架构准备。
 
-但后来分析才意识到：**如果当初选了 Immutable.js，迁移到 WebGPU + 多线程需要重写整个数据层。** 因为 Immutable.js 的数据无法直接映射到 SharedArrayBuffer 的 TypedArray。而基于 `Js.Dict` 的 HashMap 虽然性能不如 Immutable.js，但数据层面和 TypedArray 兼容。而且，在 ReScript 中我们用了纯函数操作数据——`get/set/entries` 都是复制的，没有引用污染，天然适合多线程无锁场景。
-
-这个发现催生了调研的动力：**现在克制的架构选择，将来省的不是 1-2 周时间，而是避免重写整个渲染管线。**
+调研的目的不是现在实现，而是现在就进行架构的相关设计和准备，便于在将来零成本地快速迁移，无需再重写。这不是一个「要不要做」的判断，而是一个「什么时候做最划算」的判断。
 
 ---
 
@@ -156,7 +154,7 @@ renderer.outputNode = sceneColor.mix(bloomEffect, 0.3)
 
 TSL 的另一个优势是类型安全——在 TypeScript 中能检查出错误参数，而 EffectComposer 的 `addPass` 是运行时才能发现的类型不匹配。
 
-但 TSL 的缺点也明显：**文档太少**。Three.js 0.184 的 TSL API 还没有完整的文档，主要靠阅读源码和官方示例学习。我当时花了 2 天时间读 three.js 的 `examples/jsm/tsl/` 目录才搞清楚基本用法。
+但 TSL 的缺点也明显：**文档太少**。Three.js 0.184 的 TSL API 还没有完整的文档，主要靠阅读源码和官方示例学习。
 
 ---
 
@@ -297,9 +295,7 @@ Render Worker:
 
 ## SOA 架构的真正目标
 
-Phase 7 设计 SoA（Struct of Arrays）Store 时，兄弟问了一句："搞这么复杂干嘛，就用普通的 `player.position = { x, y, z }` 不好吗？"
-
-当时的回答是"更好的缓存局部性"，但有更深层的原因——**SoA 是为即将到来的多线程 + WebGPU 架构铺路的**。
+P8 重构后 EntityStore 已经采用了 SoA（Struct of Arrays）布局——`TransformStore.positions` 是 Float32Array，`VisualStore.flags` 是 Uint8Array。这个设计不是为了单纯调性能，更深层的原因是——**SoA 是为即将到来的多线程 + WebGPU 架构铺路的**。
 
 | SoA 组件 | 映射目标 | 为什么重要 |
 |---------|---------|-----------|
@@ -463,3 +459,4 @@ P11 就是这个把关联的案例——**一个好的架构决策，在看得�
 下期进入**工作流进化**板块——讲 Vibe Coding 本身的工作流怎么从手动复制粘贴进化到全自动 AI 调度。
 
 **下一篇：[Vibe Coding 多人游戏（十二）—— AI 辅助编程 → OpenClaw 全自动 → OpenCode 引入](https://www.cnblogs.com/chaogex/p/21195307)**
+
