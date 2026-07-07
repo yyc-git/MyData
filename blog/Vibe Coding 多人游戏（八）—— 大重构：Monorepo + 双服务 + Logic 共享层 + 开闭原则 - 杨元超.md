@@ -74,6 +74,148 @@ let executeCommand = (state: gameState, command: command): gameState => {
 
 这些函数在服务端是权威计算，在前端是本地预测的参考——两端用**完全同一份代码**，不存在"服务端和客户端算法不一致"的问题。
 
+### 插曲：函数式编程在多人联网中的应用
+
+logic/ 包用 ReScript（函数式语言）写的，这不是偶然——**多人共享逻辑天然适合函数式范式，面向对象是反模式的。**
+
+多人联网的核心问题是：**同一份代码在两个不同的运行时（Node + 浏览器）里跑，结果必须一致。**
+
+#### 纯函数
+
+```rescript
+/* ✅ 纯函数：输入 → 输出，无副作用 */
+let isCollision = (a: player, b: player): bool => {
+  let dx = a.x -. b.x
+  let dz = a.z -. b.z
+  sqrt(dx *. dx +. dz *. dz) < 1.0
+}
+```
+
+```typescript
+/* ❌ 面向对象：方法依赖对象内部状态，外部不可控 */
+class CollisionSystem {
+  private players: Player[]
+  checkCollision(a: Player, b: Player): boolean {
+    // this.players 可能在调用间被修改！
+  }
+}
+```
+
+纯函数的好处：给定同样的输入（两个玩家坐标），永远返回同样的输出（是否碰撞）。不依赖 `this`、不依赖全局变量、不依赖时间——这些正是帧同步出问题的根源（同一个函数在不同客户端跑出不同结果）。
+
+#### 接受和返回 State
+
+面向对象传递状态的方式是 `this.state = newState`——方法不返回值，只改变内部状态。多人联网里这条路走不通：服务端改了状态，客户端怎么同步？
+
+```rescript
+/* ✅ FP 风格：接受 state，返回新 state */
+let executeCommand = (state: gameState, cmd: command): gameState => {
+  switch cmd.cmdType {
+  | Move => { ...state, position: computeNewPosition(state, cmd) }
+  | Attack => { ...state, hp: state.hp -. computeDamage(state, cmd) }
+  }
+}
+
+// 调用方管理状态流转
+let newState = executeCommand(oldState, moveCommand)
+broadcastMsgGameState(newState)
+```
+
+```typescript
+/* ❌ OOP 风格：方法不返回值，直接改内部状态 */
+class Game {
+  private state: GameState
+  executeCommand(cmd: Command) {
+    if (cmd.type === 'Move') {
+      this.state.position = computeNewPosition(cmd)  // 改了内部
+    }
+  }
+}
+```
+
+FP 模式的关键优势：**state 在每次调用后被显式返回，调用方可以自由决定是否广播、是否持久化、是否做快照。** 服务端可以在每帧打包 state 广播给所有客户端——因为在纯函数式模型里，state 就是数据，不是一个对象的私有财产。
+
+#### 不可变数据
+
+多人状态经过网络传输后是“拍平”的 JSON 对象。如果某个玩家改了状态后原地 mutate，其他端收到的就是脏数据。
+
+FP 用不可变数据天然解决了这个问题——每次变更都产生新对象，旧状态作为历史快照自动保留。这在回滚（rollback）、重放（replay）、断线重连场景下极为省心。
+
+```rescript
+/* ✅ 不可变：... 扩展语法创建新状态 */
+{ ...state, position: newPos }
+
+/* ❌ 可变：直接改，其他引用全崩 */
+state.position = newPos  // 别的地方还在用 oldState！
+```
+
+#### 函数组合
+
+多人联网的逻辑是一个流水线：接收入站命令 → 执行 → 碰撞检测 → 伤害计算 → 广播。FP 用函数组合天然表达这个流程：
+
+```rescript
+/* ✅ 函数组合：流水线清晰可见 */
+let tick = (state: gameState, commands: list<command>): gameState => {
+  state
+  |> executeAllCommands(commands)
+  |> detectCollisions
+  |> applyDamage
+  |> cleanupDeadPlayers
+}
+```
+
+如果用 OOP，同样的流程会散落在多个 manager 类的方法里，调用关系靠事件监听和回调串联，代码逻辑的流转路径肉眼难以追踪。
+
+#### 柯里化
+
+柯里化（Currying）在配置函数时特别有用：
+
+```rescript
+/* 柯里化：先把固定参数绑定好 */
+let computeSpeed = (characterType: string): (float) => float => {
+  let baseSpeed = characterType === "giantess" ? 3.0 : 1.0
+  // 返回新函数，只需要移动距离这一个参数
+  (distance) => baseSpeed *. distance
+}
+
+let giantessSpeed = computeSpeed("giantess")
+let littlemanSpeed = computeSpeed("littleman")
+
+// 使用：只需要传入当前帧的距离
+giantessSpeed(0.5)  // 1.5
+littlemanSpeed(0.5) // 0.5
+```
+
+在 OOP 里这通常要用策略模式或者工厂模式来实现——类+接口+多态，复杂度指数级上升。
+
+#### 为什么 OOP 在多人共享逻辑里不好用
+
+不是说 OOP 不好，而是**多人共享逻辑的核心需求恰好是 OOP 的弱点**：
+
+| 维度 | FP 做法 | OOP 做法 | 多人场景的影响 |
+|------|--------|---------|-------------|
+| 状态管理 | 输入 state → 输出 state | 方法修改内部状态 | FP 模式下 state 可以直接序列化广播 |
+| 无副作用 | 纯函数，不碰外部 | 方法依赖 this/成员变量 | FP 保证两端执行结果一致 |
+| 可测试性 | 给输入测输出，零 mock | 需要 mock 对象/模拟 DI | FP 测试代码量少 3-5 倍 |
+| 并发安全 | 不可变数据天然安全 | 锁 + 互斥 | 多人服务端高并发天然利好 FP |
+| 跨运行时 | 数据是普通 JSON/Record | 对象序列化麻烦（循环引用） | FP 状态直接 JSON.stringify 就能发 |
+
+最实际的差异体现在测试上。测试一个 FP 的 `executeCommand`：
+
+```typescript
+// FP 测试：造输入 → 调函数 → 断言输出
+test('move command updates position', () => {
+  const state = createInitialState()
+  const cmd = { type: 'Move', x: 10, z: 10 }
+  const newState = executeCommand(state, cmd)
+  expect(newState.position.x).toBe(10)
+})
+```
+
+如果要测试同功能的 OOP 版本，需要：实例化 Game 对象 → 可能 mock 数据库 → 可能 mock 网络层 → 调用方法 → 再读出内部 state 验证。
+
+引用一句社区经验：**"FP 让不可能的事变得困难，让困难的事变得可能。"** 在多人共享逻辑这个领域，函数式范式不只是一个风格选择，而是直接解决了面向对象解决不了的问题——让同一份代码在两个不同的运行时产生完全相同的结果。
+
 ---
 
 ## 2. 双服务架构：basic1 时期就有的设计
