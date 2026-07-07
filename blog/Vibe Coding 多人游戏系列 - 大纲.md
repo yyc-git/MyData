@@ -1,7 +1,7 @@
 # Vibe Coding 多人游戏系列 — 详细大纲
 
 > 系列作者：杨元超
-> 共 34 篇（含 P0 目录 + 4 篇已发布 + 29 篇待写）
+> 共 35 篇（含 P0 目录 + 4 篇已发布 + 30 篇待写）
 > 最后更新：2026-07-07
 
 ---
@@ -9,8 +9,8 @@
 ## 推荐阅读顺序
 
 - **想了解全貌**：P5 总览 → 挑感兴趣的时间线篇 → 挑感兴趣的知识篇
-- **想上手实操**：P5 → P33 起步指南 → P15→P19 工作流 → P24 测试 → P25 Token → P20 规则
-- **想避坑**：P5 → P13 部署 → P32 反模式 → P21 重构标准
+- **想上手实操**：P5 → P34 起步指南 → P16→P20 工作流 → P25 测试 → P26 Token → P21 规则
+- **想避坑**：P5 → P13 部署 → P33 反模式 → P22 重构标准
 - **时间线通读**：P5 → P6→P7→P8→P9→P10→P11→P12→P13→P14
 
 ---
@@ -268,6 +268,11 @@
 4. **v4（最终）：TransformStore + VisualStore + RenderFrameData**
    - 按职责拆 store
    - SoA（Struct of Arrays）布局：改善 cache locality，减少 GC 压力
+   - **设计目标：为 WebGPU + 多线程就绪**
+     - TransformStore 的 Float32Array 直接映射 GPU StorageBuffer
+     - VisualStore 的 flags Uint8Array 位字段低频同步
+     - 固定 stride（64 字节实体槽）→ 一键切换 SharedArrayBuffer
+     - IRenderer.syncFromEntityStore() 批量同步，Worker 可用
    - 适合前端每帧遍历更新大量对象的场景
 5. **每次演进的原因和决策过程**（表）
 
@@ -334,9 +339,65 @@
 
 ---
 
+### P15 — Phase 10：WebGPU 与多线程调研方案
+
+**字数：** 2000-3000
+
+**内容清单：**
+1. **为什么做这个调研**
+   - 项目从 basic1 帧同步一路走到服务端权威状态同步，渲染路径一直是 Three.js WebGL
+   - 2026 年 6 月，Three.js 0.184 的 WebGPU 支持达到可用状态（iOS Safari 26+ / Chrome Android 149+）
+   - 同时单机版有 GPU Skin 的成功经验，多人版应该提前准备 WebGPU + 多线程就绪架构
+2. **WebGPU 迁移分析**
+   - Three.js 0.184 WebGPU 成熟度：75%，多人路径够用
+     - 核心渲染 ✅、标准材质 ✅、后处理 ❌、Compute ✅、间接绘制 ✅
+   - **迁移成本：~15 行代码**（全靠 IRenderer 抽象层隔离了 Three.js 实现）
+     - ThreeRenderer.ts 改类型 + 构造函数 + dispose 守卫
+     - 其他所有文件 0 行改动
+   - 自动回退：WebGPURenderer 内部静默回退 WebGL2
+3. **GPU-Driven Pipeline 调研**
+   - Three.js TSL 积木盒：ComputeNode / StorageBufferNode / IndirectDraw / SkinningNode
+   - **SOA 布局的最终目标**：TransformStore 的 Float32Array 直接映射 GPU StorageBuffer
+   - 各项把握度：
+     - GPU LOD（距离）：85%
+     - Instance Frustum Cull：75%
+     - GPU 碰撞检测：75%
+     - Hi-Z 遮挡剔除：55%
+     - Meshlet Triangle Cull：25%（研究级）
+4. **多线程架构分析**
+   - SAB（SharedArrayBuffer）双缓冲架构：~512KB，Header + Frame A/B + Result
+   - **三线程分工**：
+     - 主线程：Game Logic + 渲染同步 + ECS 状态管理（写 EntityStore）
+     - Logic Worker：MMD 动画 + FBX 动画 + OBB 碰撞（~1-2周可做，不依赖 WebGPU）
+     - Render Worker（远期）：OffscreenCanvas + WebGPURenderer（角色 >20 时才需要）
+   - 核心障碍：Three.js Scene 不能跨线程
+     - 解法：SAB 存纯数据（transform/anim/boneMats），Render Worker 维护独立 Scene + 对象池
+     - 双缓冲 + AtomicNotify 同步
+5. **SOA 架构——为 WebGPU 多线程而生**
+   - 这不是巧合，v4 SOA 从设计第一天就在为这个目标铺路：
+     - TransformStore.positions（Float32Array）→ 直接映射 GPU Compute Shader input
+     - VisualStore.flags（Uint8Array bitfield）→ 低频同步，不浪费带宽
+     - 固定 64 字节实体槽 → EntityStore 切到 SAB 只需改一行构造函数参数
+     - IRenderer.syncFromEntityStore() → 批量同步，Worker 中也能用
+   - 对应 IRenderer 新增接口：BackendCapabilities / dispatchCompute / renderIndirect / syncFromEntityStore
+6. **实施路线图**
+   - Phase 1（已做完）：EntityStore 基建（TransformStore + VisualStore + 对象池）
+   - Phase 2（近期）：Logic Worker（MMD+FBX 动画 + OBB 碰撞，不依赖 WebGPU）
+   - Phase 3（中期）：WebGPU 切换（ThreeRenderer 双后端，~1周）
+   - Phase 4（后期）：GPU-Driven（GPU 碰撞 → LOD → Frustum Cull）
+   - Phase 5（远期）：Render Worker（OffscreenCanvas + SAB，角色 >20 个）
+7. **零成本省钱原则**
+   - 后处理走 TSL，不走 EffectComposer（WebGPU 下不可用）
+   - 不用 getContext() / getExtension() / onBeforeCompile
+   - 不加新的 WebGL 专用 API → 将来迁 WebGPU 成本加倍
+   - 现在克制 → 将来迁 WebGPU 1周 + 加多线程 2-3周
+   - 现在复刻全部单机功能 → 将来还债 9-14周
+
+---
+
 ## 工作流进化
 
-### P15 — 纯 AI 对话时代 → OpenCode 引入
+### P16 — 纯 AI 对话时代 → OpenCode 引入
 
 **字数：** 1500-2500
 
@@ -362,7 +423,7 @@
 
 ---
 
-### P16 — OpenClaw 调度层 + Skill 固化 + 自动部署
+### P17 — OpenClaw 调度层 + Skill 固化 + 自动部署
 
 **字数：** 2000-2500
 
@@ -387,7 +448,7 @@
 
 ---
 
-### P17 — E2E 自测与根因修复
+### P18 — E2E 自测与根因修复
 
 **字数：** 2000-2500
 
@@ -411,7 +472,7 @@
 
 ---
 
-### P18 — 完整 Vibe Coding 工作流全景
+### P19 — 完整 Vibe Coding 工作流全景
 
 **字数：** 2000-2500
 
@@ -441,7 +502,7 @@
 
 ---
 
-### P19 — Vibe Coding 经验和教训合集
+### P20 — Vibe Coding 经验和教训合集
 
 **字数：** 1000-2000
 
@@ -474,7 +535,7 @@
 
 ## 知识管理
 
-### P20 — 三层编码规则体系
+### P21 — 三层编码规则体系
 
 **字数：** 2000-3000
 
@@ -506,7 +567,7 @@
 
 ---
 
-### P21 — 重构标准 🐛🔴🟡🟢 逐条拆解
+### P22 — 重构标准 🐛🔴🟡🟢 逐条拆解
 
 **字数：** 2000-3000
 
@@ -543,7 +604,7 @@
 
 ---
 
-### P22 — Specs、变更管理与方案体系
+### P23 — Specs、变更管理与方案体系
 
 **字数：** 2000-3000
 
@@ -568,7 +629,7 @@
 
 ---
 
-### P23 — 决策记录精要（ADR）
+### P24 — 决策记录精要（ADR）
 
 **字数：** 2000-3000
 
@@ -591,7 +652,7 @@
 
 ---
 
-### P24 — 测试策略体系
+### P25 — 测试策略体系
 
 **字数：** 2000-3000
 
@@ -622,7 +683,7 @@
 
 ---
 
-### P25 — Token 优化全攻略
+### P26 — Token 优化全攻略
 
 **字数：** 2000-3000
 
@@ -659,7 +720,7 @@
 
 ---
 
-### P26 — 记忆管理体系
+### P27 — 记忆管理体系
 
 **字数：** 2000-3000
 
@@ -691,7 +752,7 @@
 
 ---
 
-### P27 — Agent Brief 与 OpenCode 调度规范
+### P28 — Agent Brief 与 OpenCode 调度规范
 
 **字数：** 2000-3000
 
@@ -725,7 +786,7 @@
 
 ---
 
-### P28 — 部署与服务管理
+### P29 — 部署与服务管理
 
 **字数：** 2000-3000
 
@@ -767,7 +828,7 @@
 
 ---
 
-### P29 — OpenClaw 工具链全景
+### P30 — OpenClaw 工具链全景
 
 **字数：** 2000-3000
 
@@ -812,7 +873,7 @@
 
 ---
 
-### P30 — 前端性能优化（含 AI 素材管线）
+### P31 — 前端性能优化（含 AI 素材管线）
 
 **字数：** 2500-3000
 
@@ -829,6 +890,11 @@
    - TransformStore（位置/旋转/缩放）
    - VisualStore（颜色/可见性/动画状态）
    - RenderFrameData（每帧渲染用数据）
+   - **设计目标：WebGPU + 多线程就绪**
+     - TransformStore Float32Array → 直接映射 GPU StorageBuffer
+     - VisualStore Uint8Array 位字段 → 低频同步
+     - 固定 stride（64 字节实体槽）→ 一键切换 SharedArrayBuffer
+     - IRenderer.syncFromEntityStore() 批量同步，Worker 可用
    - 改善 cache locality，减少 GC 压力
 4. **插值优化**
    - 线性插值替代 Tween 缓动（减少对象创建）
@@ -854,7 +920,7 @@
 
 ---
 
-### P31 — 通信可靠性与错误处理模式
+### P32 — 通信可靠性与错误处理模式
 
 **字数：** 2000-3000
 
@@ -890,7 +956,7 @@
 
 ---
 
-### P32 — 教训、反模式与设计模式
+### P33 — 教训、反模式与设计模式
 
 **字数：** 2500-3000
 
@@ -925,7 +991,7 @@
    - **开闭原则**：AI 协作的第一架构约束
    - **纯函数共享层**：ReScript + bundle，两端行为一致
    - **代次守卫**：generation++ / countdownGeneration 乐观锁
-   - **SoA 状态管理**：TransformStore/VisualStore，cache locality
+   - **SoA 状态管理**：TransformStore/VisualStore，**WebGPU/多线程就绪的纯数据架构**
    - **事件驱动**：新行为 = 新 handler，不改现有逻辑
    - **防御式编程**：参数必传、尽早 throw
    - **Test-as-documentation**：BDD + Specs = 活的文档
@@ -938,7 +1004,7 @@
 
 ## 总结
 
-### P33 — 给下一个 Vibe Coder 的起步指南
+### P34 — 给下一个 Vibe Coder 的起步指南
 
 **字数：** 1000-2000
 
@@ -960,11 +1026,11 @@
    - 你不再写代码，你定义 Specs、验收、总结
    - 剩下的 AI 做
    - 问题在于"定义正确的事"，而不是"高效做错的事"
-5. **从 P1-P4 外部视角到 P5-P32 内部实战的呼应**
+5. **从 P1-P4 外部视角到 P5-P34 内部实战的呼应**
    - Pieter Levels 的 3 天（P1）
    - Vibe Jam 的行业验证（P2）
    - AI 方法论（P3）
-   - 能做/不能做的边界（P4 + P32）
+   - 能做/不能做的边界（P4 + P33）
 6. **一句话总结**
    > 先把 demo 跑通，再想架构；先用状态同步，再想优化；先定义 Specs，再让 AI 干活。
 
@@ -978,9 +1044,11 @@
 | P1-P4 已发布 | 4 | 已存在 |
 | P5 总览 | 1 | 2000-3000 |
 | 时间线 P6-P14 | 9 | 1500-3000 |
-| 工作流 P15-P19 | 5 | 1000-2500 |
-| 知识管理 P20-P32 | 13 | 2000-3000 |
-| 总结 P33 | 1 | 1000-2000 |
-| **合计** | **34** | |
+| P15 WebGPU/多线程调研 | 1 | 2000-3000 |
+| 工作流 P16-P20 | 5 | 1000-2500 |
+| 知识管理 P21-P33 | 13 | 2000-3000 |
+| 总结 P34 | 1 | 1000-2000 |
+| **合计** | **35** | |
 
 全部文章字数控制在 500-3000 字范围内。每篇见本大纲即可直接开写。
+
