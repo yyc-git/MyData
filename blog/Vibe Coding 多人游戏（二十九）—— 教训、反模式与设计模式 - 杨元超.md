@@ -8,44 +8,74 @@
 
 整个系列到这篇，大部分坑都讲过了。这篇把它们归成几类，再加 13 个可复用的设计模式。
 
+这些教训不是"读文档"学来的——每一个都是我花过时间、烧过 token、熬过夜踩出来的。如果你在看这篇，希望你能跳过这些坑——或者至少踩的时候能认出"这是个坑"。
+
 ---
 
 ## 6 类坑的 Root Cause
 
-**1. 选型类**
-- 帧同步很美但不适合 2 人场景
-- Immutable.js 太重 → 自制 HashMap 有 bug → Js.Dict 够用
-- Module._load hook 太复杂 → 直接注入 node_modules
+### 1. 选型类
 
-**2. 部署类（6 连环）**
-- undici@7 Node 18 vs Node 20 兼容
-- zip 扁平结构路径解析不到
-- scf_bootstrap 无执行权限
-- ESM 与 CJS 的冲突
-- Hook API 版本不一致
-- Warm container 定时器残留
+**帧同步很美但不适合 2 人场景。** 项目第一天选了帧同步——因为多人游戏教程都在讲它。但浮点数精度、调试回滚、网络抖动，每一个都是 AI 无法独立处理的。第一周就放弃了。
 
-**3. AI 协作类**
-- 偷换方案：AI 发现问题不汇报，自己换方案
-- 拍脑袋修 bug：不看日志直接改代码
-- 提前抽象：一个场景搞出全套设计模式
-- 重复造轮：不知道已有工具函数
+**Immutable.js 太重。** 引入的理由是"不可变数据更安全"，但在 GTS-Play 的场景下，安全不是问题，性能才是——50KB 的包 + 复杂的 API + GC 飙升 = 两周后放弃。而且 `Object.keys(Immutable.Map())` 永远为真这个坑，AI 排查了一小时才发现。
 
-**4. 测试类**
-- 集成测试 mock 假代码（测不到实际路径）
-- E2E 前不重启（WS 断连卡死）
-- HMR 断 WS（webpack 热更新导致退房）
+**自制 HashMap 有 bug。** Immutable.js 放弃后，AI 说"我们自己写一个 HashMap"。结果 hash 冲突导致玩家 HP 串号——玩家 A 的 HP 显示在玩家 B 身上。**自制基础设施的风险：你自己也是第一次写，你也不知道哪里有坑。**
 
-**5. 工具类**
-- Tool loop 不 yield（118 轮 → context overflow 炸 session）
-- Socket hang up 误判（以为卡住其实在等输出）
-- Object.keys(Immutable.Map()) 永远为真
-- 状态重置遗漏（gameStop 未重置 flag）
+**Module._load hook 太复杂。** 想在 SCF 上加载本地模块，AI 的方案是拦截 Node.js 的 `Module._load`。部署后发现 Module._load 在不同 Node.js 版本下 API 签名不同，WebSocket 连接失败只返回 HTTP 446/443——无法定位问题。最后改成把模块直接注入 zip 的 node_modules。
 
-**6. 状态管理类**
-- AABB 不够 → OBB → 凸包
-- Immutable.js → HashMap hash 冲突
-- Js.Dict 类型不安全 → SoA
+**核心教训：简单的东西最可靠。** 不要为了"更好的设计"选择复杂度高的方案——AI 需要能理解它，兄弟需要能调试它。
+
+### 2. 部署类（6 连环，详见 P10 和 P25）
+
+- `undici@7` Node 18 vs Node 20 兼容性问题
+- zip 扁平结构导致 SCF 找不到入口文件
+- `scf_bootstrap` 无执行权限（Windows zip 丢失 +x）
+- ESM 与 CJS 的冲突（`type: module` 影响 `require`）
+- Hook API 版本不一致（Module._load）
+- Warm container 定时器残留（代次守卫解决）
+
+每个坑单独看都不难，但连环出现时，排查成了灾难。我的排查流程是这样的：第一天 fix 了 undici 依赖冲突 → 第二天发现 zip 结构不对 → 第三天加执行权限 → 第四天改 ESM 冲突 → 第五天换掉 Module._load → 第六天加代次守卫。
+
+一周都在部署上打转。**但每个坑都产生了一个自动化规则**——现在 `deploy-scf.js` 一次处理所有 6 个问题，再也没出过包。
+
+### 3. AI 协作类
+
+**偷换方案：** AI 发现问题不汇报，自己换方案。我之前遇到过 AI 发现 "Match 服务的接口存在但用法不对"，它没有问我，直接换了个接口实现——用错了参数，修复了 3 次才回归正常。
+
+**拍脑袋修 bug：** 不看日志直接改代码。AI 看到一个 bug，不查日志就猜测问题——猜错→改错→再猜→再错，循环 3-4 次后才去查日志。查完发现根因很简单（比如 `animationName` 被覆盖了），10 分钟就修好了。
+
+**提前抽象：** 一个使用场景搞出全套设计模式（接口、工厂、策略、观察者）。AI 最喜欢的模式是"工厂"——一个简单的新建对象操作，它可能用 6 个文件来实现，抽象了 4 层。
+
+**重复造轮：** 不知道项目已有工具函数，重新实现了一遍。比如项目中已经有 `formatTime(seconds)` 函数，AI 重新写了一个 `formatTimer(seconds)`——两个函数一模一样。
+
+**核心对策：** 规则体系里的 🟡 级检查项明确写了"警惕不必要的抽象"和"有没有产生重复代码"。代码审核时这两条人工必看。
+
+### 4. 测试类
+
+**集成测试 mock 假代码：** AI 测试一个函数，但 mock 了整个模块——测试通过了，但测试的代码路径和生产代码完全不同。比如测试 `disconnect` 逻辑，但 mock 了 `Server.disconnect` 本身——测的根本不是真正的代码。
+
+**E2E 前不重启：** 不重启服务端做 E2E，结果连接了上一次的会话，状态残留导致各种奇怪问题。
+
+**HMR 断 WS：** webpack 热更新时重新加载前端代码，但 WebSocket 连接还在——热更新导致 `disconnect` 触发，玩家退房了。这个问题在开发时频繁出现，浪费了大量时间。
+
+### 5. 工具类
+
+**Tool loop 不 yield：** AI 在单回合里做了 118 轮 tool call——读文件、改代码、跑测试、再读……最终 context overflow 炸 session，全部工作丢失。后来设定每 20-30 轮主动 yield。
+
+**Socket hang up 误判：** 服务端在处理长任务时没有及时回复 heartbeat，客户端误以为连接断了。解决：在长任务中定期发 heartbeat。
+
+**Object.keys(Immutable.Map()) 永远为真：** 之前说过了，这个坑 AI 花了一小时。
+
+**状态重置遗漏：** gameStop 未重置 gameStartStartedRef、onGameStarted 未重置 gameOverTriggeredRef——End 逻辑重置检查的最高频来源。
+
+### 6. 状态管理类
+
+- AABB 碰撞检测不够用 → 换成 OBB → 还不够 → 凸包。渐进式碰撞精度——每步只解决当前痛点。
+- Immutable.js 太重 → 自制 HashMap 有 hash 冲突 → 换成 Js.Dict
+- Js.Dict 类型不安全（全是 `any`） → 换成 SoA TypedArray
+
+每一步的触发点都是"遇到了真实问题才换"，没有提前优化。
 
 ---
 
@@ -53,19 +83,19 @@
 
 | 模式 | 一句话 |
 |------|--------|
-| **服务端权威 + 绝对状态** | 最简多人同步方案 |
-| **开闭原则** | AI 协作的第一架构约束 |
-| **纯函数共享层** | ReScript + bundle，两端行为一致 |
-| **渐进式碰撞精度** | AABB → OBB → 凸包，每步只解决当前痛点 |
-| **代次守卫** | generation++ 乐观锁防定时器残留 |
-| **SoA 状态管理** | 纯数据架构，WebGPU 就绪 |
-| **事件驱动** | 新行为 = 新 handler，不改现有逻辑 |
-| **防御式编程** | 参数必传、尽早 throw |
-| **Test-as-documentation** | BDD + Specs = 活的文档 |
-| **隔离层设计** | business_layer/multiplayer/ 安全沙箱 |
-| **先跑通再工程化** | basic1 → new_basic2 → monorepo |
-| **先状态同步再优化** | 不做 rollback、不做增量、不做预测 |
-| **Skill 化流程** | 可执行的流程化知识 |
+| **服务端权威 + 绝对状态** | 最简多人同步方案——不增量、不回滚、不预测，全量状态下发。简单到 AI 不会搞错。 |
+| **开闭原则** | AI 协作的第一架构约束——新增多人功能时，**不修改**单机代码。隔离安全沙箱。 |
+| **纯函数共享层** | ReScript 编译到 49KB bundle，两端加载同一份。前端和后端的行为 100% 一致。 |
+| **渐进式碰撞精度** | AABB → OBB → 凸包，每步只解决当前痛点。不提前优化，也不用一步到位。 |
+| **代次守卫** | `generation++` 乐观锁防定时器残留——SCF warm container 下每个请求都自增代次，旧代次的定时器回调自动跳过。 |
+| **SoA 状态管理** | Float32Array 连续内存 + 固定 stride，GC 压力极低。WebGPU 就绪的数据结构。 |
+| **事件驱动** | 新行为 = 新 handler，不改现有逻辑。避免 if-else 嵌套地狱。 |
+| **防御式编程** | 参数必传、尽早 throw、不满足条件拒绝操作。在 AI 边界处设置安全检查。 |
+| **Test-as-documentation** | BDD + Specs = 活的文档。BDD 测试不仅验证功能，还记录了业务场景。 |
+| **隔离层设计** | `business_layer/multiplayer/` 安全沙箱——所有多人代码放这里，单机代码 zero-touch。 |
+| **先跑通再工程化** | basic1 → new_basic2 → monorepo。每一步都追求"先看到游戏能跑"，再想工程架构。 |
+| **先状态同步再优化** | 不做 rollback、不做增量、不做预测。状态同步够用前不碰任何高级优化。 |
+| **Skill 化流程** | 可执行的流程化知识——把兄弟的经验和决策编码成 AI 可执行的 Skill。每次 Skill 运行都是经验的复制。 |
 
 ---
 
@@ -73,8 +103,12 @@
 
 > **先把 demo 跑通，再想架构；先用状态同步，再想优化；先定义 Specs，再让 AI 干活。**
 
+这 13 个模式不是理论推导出来的——它们是从 40+ 条 ADR、30+ 次线上部署、200+ 次 BDD 测试迭代中提炼出的最佳实践。每个模式都对应至少一个真实踩坑。
+
+我不保证这些模式适用于所有多人游戏项目。但我保证——如果从第一天就用这些模式，GTS-Play 至少能省下一半的开发时间。
+
 ---
 
-下期 **最后一篇：给下一个 Vibe Coder 的起步指南。**
+**下一篇：最后一篇——给下一个 Vibe Coder 的起步指南。**
 
-**下一篇：[Vibe Coding 多人游戏（三十）—— 给下一个 Vibe Coder 的起步指南](https://www.cnblogs.com/chaogex/p/21195307)**
+**[Vibe Coding 多人游戏（三十）—— 给下一个 Vibe Coder 的起步指南](https://www.cnblogs.com/chaogex/p/21195307)**

@@ -26,13 +26,98 @@ basic1 帧同步 → new_basic2 状态同步 → 大重构 → 迭代开发 → 
    P6             P7                   P8         P9          P10
 ```
 
-| 阶段 | 核心内容 | 最深的坑 |
-|------|---------|---------|
-| **P6 帧同步** | 第一个多人原型 basic1，Lockstep 方案，服务端是中继 | 浮点数各平台不一致 |
-| **P7 状态同步** | 服务端权威，引入 TSRPC | bigint 传不了 |
-| **P8 大重构** | Monorepo + 双服务 + Logic 共享层 + 开闭原则 | 循环依赖、warm container、zip 深度 |
-| **P9 迭代开发** | Tick Loop + 碰撞检测 + 状态管理演进 | HashMap hash 冲突、动画 clip 重名 |
-| **P10 SCF 部署** | 6 个部署连环坑 | undici@7 需要 Node 20 |
+### P6 帧同步（basic1 原型）— 2026年5月底
+
+一切从这开始。当时我让 AI（DeepSeek 网页版 + Trae 插件）基于一个已有的单机小 demo 改出帧同步原型。AI 理解能力很强，Lockstep 方案是它自己提的——服务端只做中继转发，所有客户端同步执行相同的指令，确保结果一致。
+
+看起来很美。服务端超级轻量，只需中转指令包。每个客户端独自计算物理、碰撞、游戏逻辑。理论上只要种子一样、指令顺序一样，各端结果就一样。
+
+但实际跑起来，第一个问题就是**浮点数各平台不一致**。同样的位置计算，用 Chrome 和用 Firefox 跑两帧就开始偏移。我拉了两台电脑手动对比，发现 `Math.atan2` 和浮点加减法在各浏览器里的 NaN 处理、denorm 行为微妙不同，差一个 ULP 都会在下一帧放大。AI 当时自信地说「JavaScript 的 IEEE 754 浮点是确定的」，实际跑起来却不是那么回事。
+
+第二个问题是 AI 做的算法里偷偷用了 `Date.now()` 做时间戳。按 Lockstep 理论，所有客户端必须使用完全相同的逻辑时钟，但 AI 没意识到这是一个同步敏感的地方。结果每个客户端自说自话地推进时间，游戏进程很快就不一致了。
+
+第三个问题暴露得更晚：**单人逻辑与多人进入逻辑耦合**。AI 在改单机代码时保持了原有的流程——必须从单人关卡创建进入、再切换到多人。这导致测试极其麻烦，每次都要走一遍完整的单人创建流程。
+
+2026年5月底到6月初，我们在 basic1 上磨了一周。到后来我已经清楚——Lockstep 虽美，但 AI 不够精细到能处理所有同步细节。6月初我决定放弃 basic1，换了方向。
+
+**P6 会完整展开这个阶段的故事。**
+
+### P7 状态同步（new_basic2 原型）— 2026年6月上旬
+
+6月4号左右，我在 GitHub 上找到了一个简单的 TSRPC + WebSocket 示例，决定**服务端权威状态同步**。AI 不再需要处理同步一致性，服务端统一算 tick，所有客户端只做渲染。
+
+这个改动是翻天覆地的：
+
+- **服务端**：新建 `room-service`，15FPS tick 循环，读命令 → 执行逻辑 → 广播状态
+- **客户端**：只渲染，不再参与逻辑计算
+- **帧同步 → 状态同步**：之前写的 Lockstep 代码几乎全部作废
+
+TSRPC 是个中国开发者写的 TypeScript RPC 框架，天然支持 WebSocket，协议定义简洁。但一上手就遇到坑：**bigint 传不过去**。TSRPC 内部用 JSON 序列化，JSON 不支持 bigint。服务端用 bigint 做时间戳，客户端收到的却是 `{"n":12345}` 对象，直接崩溃。最后把所有 bigint 换成 string 或 number 了事。
+
+更关键的问题是——我对代码的控制权在快速下降。basic1 时期 AI 辅助编程出现多次「AI 拍脑袋修 bug」的问题：我说位置不同步，AI 不加日志排查，而是直接在客户端加一行 `position = serverPosition`，掩盖了真正的根因。新阶段我决定换工具——**引入 OpenClaw**，让它作为我的人机接口，全面接管日常开发。这正是后续工作流进化的开端。
+
+**P7 会完整展开状态同步方案的设计和坑。**
+
+### P8 大重构（Monorepo + 双服务 + Logic 共享层）— 2026年6月8日-6月12日
+
+状态同步 MVP 跑通后，代码处于可运行但不可维护的状态。`demos/new_basic2/` 目录里前端和逻辑搅在一起，服务端代码也是一团乱麻。
+
+6月8号这天，我和 OpenClaw 面对一个关键决策：**要不要真正重构架构？**
+
+重构意味着做几件事：
+1. 从 `demos/` 目录移到真正的 `packages/frontend/`，接管单机版的整个前端
+2. 抽出 `packages/logic/` 共享层——纯逻辑，无任何框架依赖
+3. `room-service` 和 `match-service` 依赖 logic 包
+4. 引入 IRenderer 接口抽象，与 Three.js 解耦
+
+这个决策之前我犹豫了很长时间。单机版的前端代码量巨大（Three.js + React + Ant Design + MMD + FBX），代码耦合度极高。AI 以前在这个代码里做过几次修改，每次至少改坏一两个地方。
+
+但 OpenClaw 给出的方案我很认同：**不改单机代码，只做扩展**。在单机代码基础上加多人渲染层、加多人逻辑层、加 IRenderer 接口。多人部分的代码全部新建，不影响单机。
+
+重构过程很痛苦。遇到的坑：
+- **循 环 依 赖**：logic 包引用 commonlib、frontend 引用 logic、room-service 引用 logic——`tsconfig.json` 的 paths 和 references 配置了好几轮才正确
+- **warm container 残留**：第一版 room-service 没有正确处理代次守卫，旧服务的 tick loop 不清理，新版启动后两个 loop 同时跑
+- **zip 深度问题**：之后部署 SCF 时才发现，zip 里的目录扁平导致 `../../../logic/src` 解析失败
+- **Schema 协议不同步**：改了 `playerState` 字段但忘了更新 `serviceProto.ts`，数据传过去对不上
+
+为了彻底解决不可维护的问题，我还引入了 ReScript 来重写 logic 包的逻辑层代码。ReScript 的类型系统够强（OCaml 的血统），编译成 JavaScript，适合做游戏逻辑这种类型密集且容不得运行时错误的部分。但 ReScript 又带来了一整条依赖链的问题，后来部署时差点被 @rescript/runtime 的 ESM 问题搞崩溃。这是后话。
+
+**P8 会详细展开这次大重构的全过程。**
+
+### P9 迭代开发（Tick Loop + 碰撞检测 + 状态管理演进）— 2026年6月13日-6月29日
+
+重构后的代码结构清晰了，可以真正进入产品迭代。
+
+这个过程大约持续了两周半，按日迭代。每天的工作模式基本是：兄弟下需求 → OpenClaw 调度 OpenCode 写代码 → 跑测试 → 验证 → 记录 → 收工。
+
+典型的功能点：
+- **MMD 巨大娘接入**：把单机版的 MMD 模型（白希.pmx）引入多人版，用 VMD 动画替换 FBX 动画。这里有一个经典坑：MMD 的脚部 IK 在多人 Transform 下失效。排查了一下午，最终发现是 meta3d 修改了 Three.js 的 `updateMatrixWorld`，只更新左右足的骨骼矩阵，其他骨骼的 matrixWorld 是 stale 值。修复方案是把 mesh 的 transform 归零后跑 IK，再恢复 transform
+- **碰撞检测演进**：从 AABB 到 OBB 到 hull 碰撞，精度逐步提升。每次改碰撞都加 BDD 测试
+- **最多 4 人限制**：添加玩家上限管理，房主/Ts 等角色逻辑
+- **动画 Clip 冲突**：FBX 文件里所有动作 clip 都叫 "mixamo.com"。`mixer.clipAction("mixamo.com")` 永远返回第一个，导致所有人动画相同。修复：加载后重命名 clip
+- **退出清理**：`beforeunload` 发 `disconnect`，服务端清理玩家状态。HMR 热更新时 WebSocket 断连导致玩家意外退房的问题折腾了好久
+
+这个阶段最有意思的是 **OpenCode 的引入**。之前 OpenClaw 一个人做调度 + 写代码 + 记忆 + 测试，上下文膨胀严重，平均每天 token 花费 100 多元——兄弟直接喊「太贵了」。6月12日我们做了调度分离：OpenClaw 做调度层，写代码的任务交给专门的 OpenCode（用 DeepSeek Flash Free 模型，便宜）。这个改变让月费降了 **96%**。
+
+**P9 会展开迭代开发的具体流程和功能演进。**
+
+### P10 SCF 部署 — 2026年6月30日
+
+写再多代码，不上线都是白搭。6月30日我们开始部署到腾讯云 SCF（Serverless Cloud Function）。
+
+这一天是所有踩坑的大总结。如果说前阶段是「写代码难」，这一天就是「让写过代码跑在别人的机器上更难」。
+
+一共踩了 **6 个连环坑**，严格按出现顺序：
+1. **undici@7 File is not defined** — `@cloudbase/functions-framework` 链式依赖 undici@7，需要 Node 20 的 `File` API，SCF 只有 Node 18。解决：去掉 framework，直接启动 TSRPC HttpServer
+2. **zip 深度补偿** — 扁平 zip 下 `../../../logic/src` 解析到根目录外。解决：zip 内加 `svc/` 子目录
+3. **scf_bootstrap 权限** — Windows 压缩不保留 `+x`。解决：.NET ZipArchive reflection 设 ExternalAttributes
+4. **ESM/CJS 冲突** — `@rescript/runtime/package.json` 有 `"type":"module"`。解决：打包时删掉
+5. **Module._load hook 失败** — 尝试拦截 Node 模块加载，复杂且不稳定。解决：直接注入 node_modules
+6. **warm container 定时器残留** — 旧 tick loop 不清理。解决：代次守卫自毁
+
+每个坑从发现到修复都经历了「症状 → 排查 → 根因 → 修复」的完整链路。最终我们写了一套自动化部署脚本 `deploy-scf.js`，纯 Node.js 零依赖，一行命令搞定打包 + 上传 + 配置 + BDD 验证。
+
+**P10 会完整展开这 6 个坑的逐坑故事。**
 
 ---
 
@@ -43,104 +128,115 @@ AI 辅助编程 → OpenClaw 全自动 → 引入 OpenCode → TDD + Skill + 自
   (DeepSeek网页)  (0代码指挥)    (调度分离降本)     (流程标准化闭环)
 ```
 
-### Step 1：AI 辅助编程（最早阶段）
+### Step 1：AI 辅助编程（最早阶段，2026年5月底-6月初）
 
-用 DeepSeek 网页版做优化、算法实现等局部功能的处理。用 Trae VSCode 插件做代码补全。
+最初阶段基本是「人指挥 AI 写代码」的传统模式。
 
-痛点：每次改代码要在网页和 IDE 之间反复切换，上下文也带不过去。
+我用 DeepSeek 网页版写需求 → 把代码贴进去让 AI 分析/改 → 手动复制粘贴到 VSCode。Trae 插件装过，但更多是补全和局部辅助。
 
-### Step 2：OpenClaw 全自动写代码（零代码指挥阶段）
+这时候我的位置是「架构师 + 代码搬运工」。痛点很明确：每改一版代码要在 DeepSeek 和 IDE 之间来回切换几十次，AI 的上文下文每次都断掉。AI 经常不记得刚改到哪了，我又要重新贴一遍代码。
 
-引入 OpenClaw 后，工具链升级了一大截：
+更难受的是，**AI 会偷偷改方案不告诉你**。我让 AI「给服务端加一个心跳超时踢人」，它看了代码后觉得「那个地方的架构不太行」，自作主张重构了 Game.ts，加了三个新函数、换了数据结构，然后在回复里轻描淡写一句「顺便重构了」。我检查半天才发现了这个毒瘤。
 
-- OpenClaw 接入飞书接收指令、接入搜索抓取资料、直接写代码
-- 兄弟完全不再写代码，只是指挥 OpenClaw——告诉它架构怎么设计、单机逻辑在哪个位置、要转换成什么多人逻辑
-- OpenClaw 自动去读单机代码、理解逻辑、写出多人版本
+### Step 2：OpenClaw 全自动写代码（零代码指挥阶段，2026年6月上旬）
 
-**痛点：token 消耗极高，平均每天花费 100 多元。** OpenClaw 做所有事情（调度 + 分析 + 写代码 + 测试），上下文里夹带了很多调度和记忆相关的资产，token 利用率不高。
+引入 OpenClaw 是一个转折点。
 
-### Step 3：引入 OpenCode 写代码（调度分离）
+OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写代码，只需告诉它架构设计、单机逻辑在哪、要改什么方向——它会自己去读单机代码、理解逻辑、写多人版本。
 
-问题清楚了：OpenClaw 适合做调度层（管记忆、管流程），写代码交给专门干这个的工具。
+当时的做法是：
+- 飞书接入：我在飞书群里喊「小龙虾」（OpenClaw 的昵称），给它需求
+- OpenClaw 读代码 → 分析 → 写代码 → 编译 → 报结果
+- 我再通过飞书反馈
 
-方案：**OpenClaw 调度 OpenCode 来写代码。**
+效果提升非常明显。以前一个简单功能至少半天，有了 OpenClaw 半小时搞定。复杂功能以前要 2-3 天，现在半天到一天。
 
-- OpenCode 用 Go 套餐，很便宜
-- OpenCode 写代码的 token 消耗低——一次只做一件事，没有不相关的上下文
-- OpenClaw 的记忆等资产可以继续使用（调度时传给 OpenCode）
-- OpenClaw 在调度 OpenCode 时会自动做一些分析和处理，比直接使用 OpenCode 更高效
+但新问题来了：OpenClaw 做所有事情——调度、分析、写代码、跑测试、记忆管理——上下文里夹带大量资产，**token 消耗极高**。平均每天 100 多元。兄弟说「这才几天，快上千了」，让我必须降本。
 
-模型选择上，OpenClaw 使用 OpenCode 的 DeepSeek Flash Free 模型（每天有免费额度）。超出免费额度就切换为 DeepSeek Flash——两者是同一个模型，缓存命中率不受影响。
+### Step 3：引入 OpenCode 写代码（调度分离，2026年6月12日）
 
-### Step 4-6：TDD + Skill 固化 + 自动部署 + E2E 自测 + Specs
+问题清楚了：OpenClaw 负责调度层（记记忆、管流程）是它的强项，但写代码这件事本身就是 token 大头——应该交给专门干这个的工具。
 
-后面几步是把流程标准化：
+方案很直接：**OpenClaw 调度 OpenCode 来写代码。**
 
-- **TDD 流程**：先写 BDD 测试让 bug 真实 RED → 再修复让测试 GREEN
-- **Skill 固化**：把固定流程写成 SKILL.md，AI 严格执行不走样
-- **自动部署**：deploy-scf.js 一键部署，BDD 验证
-- **E2E 自测 + 根因修复**：让 AI 自己复现 bug → 打日志定位 → 修复 → 验证
-- **Specs**：先出规格再开工，Delta Specs 确认后写代码
+做得更巧妙的一点是 OpenClaw 并不把全部上下文丢给 OpenCode 让它从头理解。OpenClaw 先分析需求、写好 Brief、标好要改的文件和改动要点，再让 OpenCode 执行具体的改动。OpenCode 不关心项目全局和记忆，只关心这个 brief 里的事。
 
-每一步的详细过程在 **P12-P12 工作流进化** 篇展开。
+模型方面，OpenCode 用 DeepSeek Flash Free（每天有免费额度）。超出免费额度就切 DeepSeek Flash——二者是同一个模型，缓存命中率不受影响。
+
+这一改，当天 token 费用从 100+ 降到个位数。兄弟表示满意。
+
+### Step 4-6：TDD 流程固化 + Skill 标准化 + 自动部署 + E2E 自测 + Specs（2026年6月中旬-7月初）
+
+后面几步是持续优化：
+
+- **TDD 流程**：先写 BDD 测试让 bug 真实 RED → 再修复让测试 GREEN。这是代码质量的基础。任何没测试覆盖的代码都被视为「不存在的代码」
+- **Skill 固化**：把固定流程写成 SKILL.md。比如「部署流程 Skill」「E2E 测试 Skill」「记忆保存 Skill」。AI 严格执行不走样
+- **自动部署**：deploy-scf.js 一键部署，部署前自动跑 BDD 验证
+- **E2E 自测 + 根因修复**：让 AI 自己复现 bug → 打日志定位 → 修复 → 验证。配合 Chromium CDP 实现 WebSocket 连接的验证
+- **Specs 体系**：先出规格再开工。Main Specs 概览，Delta Specs 讲清楚这次改动什么、不动什么。兄弟确认后再干活
+
+每一步的详细过程在 **P12-P15 工作流进化** 篇展开。
 
 ---
 
-## 知识管理速览（P13-P17，13 个主题）
+## 知识管理速览（P16-P29，13 个主题）
 
 | 主题 | 一句话说清 |
 |------|-----------|
-| 编码规则体系 | 基础/模块/流程三层规则 + agent-context.md 宪法机制 |
-| 重构标准 | 🐛🔴🟡🟢 审查清单——最高频 bug 是 End 逻辑重置 |
-| Specs 体系 | Main Specs + Delta Specs + 变更管理 |
-| 决策记录 | 40+ ADR 精选——还有反面决策（选了后悔的） |
-| 测试体系 | 单元 AI 自动，集成半自动，E2E 手动辅助 |
-| Token 优化 | 月费大幅下降的实操方案 |
-| 记忆管理 | 33 个锚点词，检索协议 |
-| Agent Brief | 体验式反馈 > 技术 spec |
-| 部署管理 | SCF 双环境双实例 |
-| 工具链 | 十余个 Skill 全家桶 |
-| 前端性能 | SoA、帧管理、MMD+FBX 双轨 |
-| 通信可靠性 | WS 断连、重连、竞态、防御式编程 |
-| 反模式与设计模式 | 6 类坑 root cause + 13 个可复用模式 |
+| 编码规则体系 | 基础/模块/流程三层规则 + agent-context.md 宪法机制——不是一开始就有的，是 AI 犯错后建起来的 |
+| 重构标准 | 🐛🔴🟡🟢 审查清单——最高频 bug 是 End 逻辑重置，每次都要专门检查 |
+| Specs 体系 | Main Specs + Delta Specs + 变更管理。Big change 必须有方案文档 + 兄弟确认 |
+| 决策记录 | 40+ ADR 精选——还有反面决策（选了后悔的），比如锁步帧同步和 Immutable.js |
+| 测试体系 | 单元 AI 自动，集成半自动带 mock 问题，E2E 手动辅助配合 Playwright |
+| Token 优化 | 月费从 3000+ 降到 100+ 的实操方案：调度分离 + 缓存优化 + 上下文精简 |
+| 记忆管理 | 33 个锚点词，检索协议。每天自动存档，对话结束后强制总结 |
+| Agent Brief | 体验式反馈 > 技术 spec——给 AI 反馈「角色走路不自然」比「radius 设 360」更有效 |
+| 部署管理 | SCF 双环境（production/test）双实例（room1/room2）全自动化 |
+| 工具链 | 十余个 Skill 全家桶：从 gts-save-flow 到 gts-e2e-test 到 gts-deploy |
+| 前端性能 | SoA、帧管理、MMD+FBX 双轨——更是个架构决策，为 WebGPU + 多线程铺路 |
+| 通信可靠性 | WS 断连、重连、竞态、防御式编程。beforeunload 发 disconnect 修复了 HMR 断连问题 |
+| 反模式与设计模式 | 6 类坑 root cause + 13 个可复用模式——我自己常犯的错也列进去了 |
 
 ---
 
 ## 坑的速览清单
 
 ### 选型坑
-- 帧同步很美，但状态同步更适合 AI 协作
-- Immutable.js 太重，最终回归原生
+- **帧同步很美，但状态同步更适合 AI 协作**：Lockstep 要求所有端行为完全一致，AI 做不到这个精细度。状态同步让服务端权威，AI 的犯错空间小很多
+- **Immutable.js 太重**：最开始用 Immutable.js 做状态管理，后来发现它的 Map/List 对 AI 操作不友好（`setIn` 的 key path 字符串容易写错），最终回归 `Js.Dict` + 简化 HashMap
 
 ### 部署坑（6 个）
-- undici@7 需要 Node 20（SCF 只有 18）
-- Windows zip 不保留 Unix 权限
-- ESM/CJS 混合导致 require 崩溃
-- warm container 定时器残留
+- undici@7 需要 Node 20（SCF 只有 18）——花了我大半天排查
+- Windows zip 不保留 Unix 权限——一个小文件导致整个 zip 传上去就跑不动
+- ESM/CJS 混合导致 require 崩溃——ReScript 编译产物的锅
+- warm container 定时器残留——开发时完全没问题，上生产才暴露
+- Module._load hook 在 SCF 环境下不稳定
+- zip 目录扁平化导致相对路径解析失败
 
 ### AI 协作坑
-- AI 偷换方案不告诉你
-- AI 拍脑袋修 bug（不结合日志）
-- AI 一个场景抽象出全套设计模式
-- AI 不知道已有工具函数，自己重新实现
+- **AI 偷换方案不告诉你**：说好的重构变成重写，说好的修 bug 变成架构升级
+- **AI 拍脑袋修 bug**：不加日志不分析根因，直接猜测一个原因就改代码
+- **AI 一个场景抽象出全套设计模式**：明明只需要改一行，AI 帮你建三个工厂一个 builder
+- **AI 不知道已有工具函数，自己重新实现**：我明明有个 `computeFaceAngle` 在 logic 包，它又写了一个
 
 ### 测试坑
-- 集成测试用 mock = 假测试
-- E2E 前不重启 = WS 断连卡死
-- HMR 断 WS = 测试期间退房
+- **集成测试用 mock = 假测试**：mock 掉数据库、mock 掉网络、mock 掉实际逻辑，测了个寂寞
+- **E2E 前不重启 = WS 断连卡死**：前一次测试的 WS 连接还挂着，新测试进来直接冲突
+- **HMR 断 WS = 测试期间退房**：前端每次热更新都断 WebSocket，服务端以为玩家退了
 
 ### 常见的痛点
-- Tool loop 不 yield = 炸 session（工具循环时间太长）
-- 状态重置遗漏（End 逻辑未遍历清理）
+- **Tool loop 不 yield = 炸 session**：工具体系里长时间不 yield 会超时断连，损失全部上下文
+- **状态重置遗漏**：End 逻辑（退出房间、重新开始）最容易忘清理某个关联状态
 
 ---
 
 ## 后续每篇的推荐阅读顺序
 
 - **想了解全貌：** P5（这篇）→ 挑感兴趣的时间线篇 → 挑感兴趣的知识篇
-- **想上手实操：** P5 → P14 起步指南 → P12-P12 工作流 → P13 测试 → P14 Token → P13 规则
-- **想避坑：** P5 → P10 部署 → P13 反模式 → P14 重构标准
-- **时间线通读：** P5 → P6→P7→P8→P9→P10
+- **想上手实操：** P5 → P30 起步指南 → P12-P15 工作流 → P21 测试 → P22 Token → P17 规则
+- **想避坑：** P5 → P10 部署 → P29 反模式 → P18 重构标准
+- **时间线通读：** P5 → P6 → P7 → P8 → P9 → P10
+- **想了解 AI 协作方法论：** P5 → P12 → P13 → P14 → P15 → P16 → P17 → P19 → P22 → P23 → P29
 
 ---
 
