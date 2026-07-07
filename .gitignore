@@ -1,0 +1,63 @@
+.DS_Store
+.merlin
+.idea/
+.vscode/
+jest_0/
+reference/
+node_modules/
+mine/
+reference/
+lib/bs/
+.bs.js
+.gen.tsx
+lib/js/
+lib/es6_global/
+lib/ocaml/
+
+ocaml/
+
+dist/
+.opencode/
+.gen.tsx
+
+coverage
+
+npm-debug
+
+.bsb.lock
+
+yarn.lock
+
+
+
+.log
+.ninja_log
+.cmi
+.ast
+
+
+main.js
+# Obsidian vault config
+.obsidian/
+tmp_test.log
+
+
+logs/
+screenshots/
+perf-data/
+
+
+# rcl/
+# Logs
+webpack.log
+# E2E 测试日志
+
+__logs__/
+# ReScript 编译缓存
+.project-files-cache
+e2e-edge-collision-debug.cjs
+
+.scf-cache
+
+dist-room1/
+dist-room2/

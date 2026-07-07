@@ -20,7 +20,7 @@ GTS-Play 是一个浏览器 3D 多人游戏，主题是"巨大娘（Giantess）"
 - `packages/match-service/` — 匹配服务端（HTTP）
 - `packages/logic/` — 前后端共享逻辑（ReScript）
 
-部署在腾讯云 SCF（Serverless Cloud Function）上，双实例并发（room1 + room2），每房间 2 人，暂未实现基于 session 的动态分配方案。整个前后端、部署、测试流程均由 AI 辅助完成——从 basic1 帧同步 Demo 到开闭原则重构，历时约三周。
+部署在腾讯云 SCF（Serverless Cloud Function）上，双实例并发（room1 + room2），每房间 2 人。basic1/是我手写的，其余均由 AI 辅助完成——从 basic1 帧同步 Demo 到开闭原则重构，历时约1个半月。
 
 ---
 
@@ -30,7 +30,7 @@ GTS-Play 是一个浏览器 3D 多人游戏，主题是"巨大娘（Giantess）"
 |------|-------------------|-------------|
 | 渲染引擎 | Three.js + React | Three.js（主流） |
 | 多人通信 | TSRPC（WebSocket） | Python/Node WebSocket |
-| 代码工具 | OpenCode 辅助 | Cursor / Claude Code |
+| 代码工具 | OpenClaw + OpenCode | Cursor / Claude Code |
 | 部署 | SCF 无服务器 | Hetzner VPS + Cloudflare |
 | 工程化 | Lerna monorepo | 简单结构 / monorepo 均可 |
 | 美术资源 | 待完善 | Tripo3D / CSM.ai |
