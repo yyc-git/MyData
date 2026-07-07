@@ -14,15 +14,192 @@ GTS-Play 部署在腾讯云 SCF（Serverless Cloud Function）上。SCF 本身�
 
 ## 部署迭代史
 
-| 版本 | 做法 | 问题 |
-|------|------|------|
-| v0 | 手动打 zip + 控制台上传 | 每次都挂，无法复现 |
-| v1 | deploy-scf.js 一键部署 | 但只有单环境 |
-| v2 | production + test 双环境 | 通过 URL 参数 `?isProduction=true` 切换 |
-| v3 | room1 + room2 双实例 | 各自独立 warm container，防单点故障 |
-| v4 | BDD 测试锁定部署质量 | 部署前自动跑 7 个场景：API可达、函数状态、WS连接 |
+部署的演化不是一夜之间完成的。从 basic1 时期到生产稳定，我们经历了 5 个版本，每个版本解决一个特定层级的痛点。
 
-部署的演化不是一夜之间完成的。v0 阶段我们在 SCF 控制台手动操作，每次上传 zip 都像开盲盒——有时候能跑，有时候不能，但不知道为什么。v1 阶段写自动化部署脚本后至少能复现问题了（每次跑同样的流程），但随后每次新环境、新参数都会触发新的坑，因为不同 SCF 配置参数组合下会出现不同的运行时行为。v2-v3 是我们看清了生产环境需要什么后做的标准化。v4 是最后一环——让部署可验证，彻底消灭手动检查。
+### v0：手打 zip + 控制台上传（basic1 时期，2026-05-25 ~ 2026-06-08）
+
+这是最原始的部署方式，也是最痛苦的。
+
+**步骤：**
+1. 在本地用 `Compress-Archive` 把 room-service 的 dist/ 打成 zip
+2. 打开腾讯云 SCF 控制台
+3. 找到对应函数 → 函数代码 → 上传 zip
+4. 点击保存
+5. 祈祷
+
+**问题：** 每次都挂，无法复现。
+
+症状是同一个 zip 文件，第一次上传能跑，第二次上传同样的文件挂了。后来才明白这是因为两次上传之间的几秒间隔里，SCF 的 warm container 状态不同——第一次可能热实例还存活，第二次可能冷启动了。冷启动时 zip 的解压、npm install、文件权限检查都更严格，更容易暴露问题。
+
+手动部署没有记录——每次要回想的踩坑步骤都不一样。更糟糕的是，每次上传新版本后，如果旧版能跑新版不行，你分不清是代码问题还是部署操作的不同（比如这次忘记勾选某个 SCF 控制台的配置项了）。
+
+这个阶段 deploy 一次大约 10 分钟，其中 8 分钟在找控制台配置页面。
+
+### v1：deploy-scf.js 一键部署（2026-06-09 ~ 2026-06-15）
+
+写一个 Node.js 脚本，用腾讯云 SCF 的 API 自动上传 zip。这是纯 Node.js 实现，只用内置库 `https` + `crypto` 做签名，零 npm 依赖。
+
+```javascript
+// scripts/deploy-scf.js — v1 架构（简化）
+const https = require('https')
+const crypto = require('crypto')
+const fs = require('fs')
+const path = require('path')
+
+function deploy(serviceName, zipPath) {
+    const zipBuffer = fs.readFileSync(zipPath)
+    const action = 'UpdateFunctionCode'
+    
+    const params = {
+        FunctionName: serviceName,
+        ZipFile: zipBuffer.toString('base64'),
+        InstallDependency: true
+    }
+    
+    return callScfApi(action, params)
+}
+
+async function deployAll() {
+    await deploy('room-service', './publish/room-service.zip')
+    await deploy('match-service', './publish/match-service.zip')
+    console.log('✅ 全部部署完毕')
+}
+```
+
+从命令到部署的延迟从 10 分钟降到 30 秒——改了代码 → `yarn deploy` → 上线测试。
+
+但 v1 没有环境管理——开发、测试、生产全指向同一个 SCF 函数。"上一个版本没问题，新版本挂了"这种场景下，没办法保留旧版本同时验证新版本。每次更新都是直接替换现有函数代码。
+
+**教训：脚本化是第一步。只要部署过程不是手动的，它就变成了可复现的、可审计的过程。** 但一次部署影响全部用户是个更大的问题——需要环境隔离。
+
+### v2：production + test 双环境（2026-06-15 ~ 2026-06-20）
+
+把 SCF 函数拆成 test 和 production 两套，通过 URL 参数 `?isProduction=true` 控制。test 环境始终跑最新代码，production 环境只有验证通过后才更新。
+
+```javascript
+// deploy-scf.js — v2 双环境支持
+async function deployAll() {
+    // 先部署 test 环境
+    await deploy('room-service-test', './publish/room-service.zip')
+    await deploy('match-service-test', './publish/match-service.zip')
+    
+    // 运行 BDD 验证（此时还没有 BDD 测试，只是手动检查）
+    console.log('✅ test 环境已更新。请在 test URL 上验证：')
+    console.log(testUrls)
+    
+    // 验证通过后部署 production
+    const isApproved = await askUser('Production 可以部署吗？')
+    if (isApproved) {
+        await deploy('room-service', './publish/room-service.zip')
+        await deploy('match-service', './publish/match-service.zip')
+    }
+}
+```
+
+这阶段另一个变化是加上了 SCF 返回的错误处理。v1 的 `callScfApi` 不会检查 API 返回码——有一次签名过期了（TC3-HMAC-SHA256 签名的时间戳超过 5 分钟窗口），脚本无脑继续，下次部署时以为是代码问题，排查了 30 分钟才发现是签名时间戳变成了系统时间偏差。
+
+v2 加了 API 返回码和重试逻辑：
+
+```javascript
+function callScfApi(action, params, retries = 3) {
+    // 第 1 次失败后，等 2 秒重试
+    // 第 2 次失败后，等 4 秒重试
+    // 第 3 次失败后，抛异常
+}
+```
+
+### v3：room1 + room2 双实例（2026-06-20 ~ 2026-06-30）
+
+之前 room-service 只有一个实例（SCF 的一个函数），最多同时 2 人在线。但如果 2 个人在一个房间里玩，另 2 个人想开另一个房间就没地方了。
+
+解决方案：创建 room1 和 room2 两个 SCF 函数，各自独立。前端在匹配服务中随机或按负载选择一个 room 实例。
+
+```javascript
+// match-service — 分配房间给合适的 room 实例
+async function findRoom(playerId) {
+    const rooms = [
+        { id: 'room1', capacity: 2, players: [] },
+        { id: 'room2', capacity: 2, players: [] }
+    ]
+    
+    // 找有空位的 room
+    for (const room of rooms) {
+        if (room.players.length < room.capacity) {
+            room.players.push(playerId)
+            return { roomId: room.id, wsUrl: getWsUrl(room.id) }
+        }
+    }
+    
+    throw new Error('所有房间已满')
+}
+```
+
+双实例带来的好处不只是多一个房间。room1 和 room2 各自独立 warm container，一个回收了不影响另一个。如果一个 room 出了 bug（比如 tick loop 挂死），只有这个 room 受影响，另一个还能正常玩。
+
+但双实例也暴露了新的问题：匹配服务的 WS 连接管理变得更复杂。匹配服务需要知道每个 room 的实时状态（剩余空位、是否活跃），但 room 实例 SCF 函数的生命周期是独立的——warm container 可能某个时刻被回收，匹配服务还在用旧的状态。
+
+**修复：匹配服务每次查询时向 room 实例发实时请求，不缓存 room 状态。** 如果 room 实例已回收，请求返回超时，匹配服务就把这个 room 标记为不可用。
+
+### v4：BDD 测试锁定部署质量（2026-06-30 ~ 之后）
+
+双环境、双实例、自动部署都有了，但「部署后服务是否正常」还要手动检查——打开 URL、看有没有启动成功、建个房间测试一下。
+
+手动检查的问题：
+1. **记不住要检查什么**——每次部署后检查的项目不一致，有时漏了 WebSocket 连接测试
+2. **不够快**——手动检查 2 分钟，比部署本身还慢
+3. **不可重复**——怀疑某个房间有问题时，没法快速说「这个房间再测一遍」
+
+解决方案：**BDD 测试覆盖部署验证**。部署完成后自动跑 7 个 Gherkin 场景：
+
+```gherkin
+Feature: SCF 部署验证
+  Scenario: 函数状态可达
+    Given 调用 GetFunctionLogs API
+    Then 返回状态为 Active
+
+  Scenario: WebSocket 连接正常
+    Given 创建新游戏
+    And 玩家 A 加入（WS 连接）
+    Then WS 连接成功，MSGTYPE 为 MsgGameState
+    
+  Scenario: 房间创建成功    
+    Given 调用创建房间接口
+    Then 返回 roomId 不为空
+    
+  Scenario: 玩家加入游戏
+    Given 房间已创建
+    When 玩家 A 加入房间
+    Then 服务端返回玩家列表，含 1 人
+```
+
+这些 BDD 测试并不是完整的 E2E 测试（不打开浏览器、不渲染 3D），只是验证服务端部署后的健康状态。它们跑得很快——整个套件 ~30 秒，因为只有 API 调用和 WS 握手，没有 UI 渲染。
+
+```bash
+# package.json 中的部署命令
+"deploy_all": "yarn deploy_room1 && yarn deploy_room2 && npx jest --config jest.multiplayer.json test/features/scf-deploy.feature --silent"
+```
+
+BDD 测试锁定后，出现过一次部署失败的场景：部署脚本成功上传了 zip，但 SCF 的 npm install 失败了（网络波动，npm registry 超时），函数状态变成了 Active（SCF 显示函数代码已更新但依赖没装全）。没有 BDD 验证的话，这个错误要等到用户进来玩才被发现。BDD 测试在部署完成后 30 秒内就报告了 WS 连接失败，触发了回退——自动恢复到上一个稳定版本。
+
+### v5：部署全程 AI 自动化（2026-07-05 之后）
+
+到 v4 阶段所有部署基础设施已经齐备，最后的改进是把它接入到 AI 工作流中。
+
+现在部署只需要一句话：
+
+> 兄弟说：「部署」
+
+OpenClaw 收到后：
+1. 检查当前代码是否通过了 BDD 测试
+2. 如果没有，先调 OpenCode 修好测试
+3. 运行 `yarn deploy_all`
+4. 等待部署完成
+5. 运行 BDD 验证测试
+6. 如果有问题，自动回滚并通知
+
+这个流程固化在 `gts-deploy` skill 中。部署脚本不再是开发者的工具，而是 AI 工作流的一环。
+
+从 v0 到 v5，每一次迭代不是因为「想升级」，而是因为当前版本出了问题。手动太麻烦 → 写脚本；没环境隔离 → 拆双环境；不够用 → 双实例；不可靠 → BDD 锁定；手动作业 → AI 接管。**每个版本的驱动力都是真实的痛。**
 
 ---
 
