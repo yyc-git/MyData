@@ -31,36 +31,49 @@ Verify Specs（验证规格）
 └── 通过/失败判定规则
 ```
 
-**Main Specs** — 项目的宪法，几乎不变
-**Delta Specs** — 当前变更的范围，必须确认后才能开工
-**Verify Specs** — 验收标准，写完就知道对不对
+**Main Specs** — 项目的宪法，几乎不变。GTS-Play 的 Main Specs 包含 6 个全局场景：collision、host-transfer、match-service、multiplayer-sync、player-lifecycle、room-service，每个描述技术选型和架构边界。
+
+**Delta Specs** — 当前变更的范围。每次改动前，AI 先输出 Delta Specs → 兄弟确认 → 开工。关键字段是"不改的"——AI 越界 90% 是因为没告诉它边界在哪。
+
+**Verify Specs** — 验收标准。Delta Specs 确认后，对应的 Verify Specs 决定了什么算"改对了"。比如 BDD 测试场景列表。
 
 ---
 
-## 变更管理流程
+## 变更管理 SOP
 
-每次变更遵循 **"讨论 → 方案 → 实施"** SOP：
+每次变更遵循 **"讨论 → 方案 → 实施"** 三步流程：
 
 ```
 Step 1：讨论
-├── 确定需求
-├── 讨论方案（多方案比较）
+├── 确定需求（兄弟提，AI 确认理解）
+├── 讨论多方案比较
 └── 评估影响面
 
 Step 2：方案
-├── 写方案文档（solutions/）
-├── 明确技术路线
-├── 列出改动的文件和范围
-└── 确认测试策略
+├── 写方案文档
+├── 明确技术路线和改动的文件
+├── Delta Specs
+└── 兄弟确认 → 确认后开工
 
 Step 3：实施
-├── 写 Delta Specs
 ├── OpenCode 执行
-├── 测试验证
+├── BDD（先 RED 再 GREEN）
 └── 提交
 ```
 
-**如果开干前没有写方案文档，这个变更大概率会跑偏。**
+**关键规则：出方案后必须等兄弟确认才能开工。** AI 说"要记住"或"好的"不等于同意。Delta Specs 没有确认就写代码 = 浪费。
+
+---
+
+## 真实案例：Specs 如何防止灾难
+
+有一次需求是"给 room-service 加一个 HTTP 接口查房间状态"。AI 直接开始写——在 room-service 里加 Express 路由、加 HTTP 服务端、改 package.json。
+
+写完后才发现：room-service 本身就是 WebSocket 服务，加 HTTP 意味着要维护两个端口、两套鉴权、两套错误处理。而实际上 match-service（HTTP 3000）已经有房间查询接口了——直接在 match 扩一个就行。
+
+如果一开始写 Delta Specs，AI 会在"不改的"里写上"不增加新服务端口"——这个灾难就不会发生。
+
+事后我们加了一条红线：**Delta Specs 的"不改的"必须比"改什么"长。** 明确告诉 AI 哪些不要碰，比告诉它要碰什么更重要。
 
 ---
 
@@ -72,7 +85,6 @@ Step 3：实施
 - 状态同步设计
 - WebGPU 迁移分析
 - 多线程架构方案
-- ...
 
 每份方案包含：背景、目标、可选方案（至少 2 个）、选定方案的理由、风险与应对。
 
@@ -87,12 +99,13 @@ Step 3：实施
 游戏退出后 isEnterGame 标志位未重置，导致下一局无法进入
 
 ### 改动范围
-- packages/room-service/src/models/Game.ts: dispose() 中重置标志位
-- packages/room-service/src/state/State.ts: 确认标志位定义
+- room-service/src/models/Game.ts: dispose() 中重置标志位
+- room-service/src/state/State.ts: 确认标志位定义
 
 ### 不改的
 - 前端代码（无关）
 - 匹配逻辑（无关）
+- 不增加新服务端口
 
 ### 测试
 - 新增集成测试：退出房间后 isEnterGame = false
