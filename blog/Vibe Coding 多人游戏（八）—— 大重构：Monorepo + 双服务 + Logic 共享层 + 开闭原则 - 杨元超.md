@@ -216,6 +216,56 @@ test('move command updates position', () => {
 
 引用一句社区经验：**"FP 让不可能的事变得困难，让困难的事变得可能。"** 在多人共享逻辑这个领域，函数式范式不只是一个风格选择，而是直接解决了面向对象解决不了的问题——让同一份代码在两个不同的运行时产生完全相同的结果。
 
+### FP 的连锁效应：为多线程、WebGPU 和 SoA 铺路
+
+函数式设计的影响不止于共享逻辑。后面几期会详细讲到的三个方向，它们的可实行性都跟这一天的 FP 决策直接相关：
+
+#### 多线程（Worker）
+
+FP 加不可变数据最被低估的价值是**天然线程安全**。每个 worker 拿到自己的 state 快照，处理后返回新 state，主线程合并。零锁、零竞态、零数据竞争。
+
+换成 OOP：每个线程里都有一个 Game 对象，方法改了内部 `this.state`。不加锁数据坏掉，加了锁性能回到单线程。FP 零锁的原因是：数据是值（value），不是可变的共享引用。
+
+#### WebGPU Compute Shader
+
+WebGPU 的 compute shader 本质上是**纯函数**：输入一个 buffer，输出一个 buffer。读取输入数组，写入输出数组——跟 FP 的 `state -> newState` 一模一样。
+
+如果逻辑层已经是 FP 风格，迁移到 GPU 并行计算的难度大幅降低：`players.map(updateOnePlayer)` → `dispatchWorkgroups(positionsBuffer)`。对象继承树和虚函数表无法映射到 GPU。
+
+```
+FP 风格：  state |> computePhysics |> computeCollisions |> broadcast
+GPU 映射： buffer |> computeShader0 |> computeShader1 |> copyToCPU
+```
+
+#### SoA（Structure of Arrays）
+
+FP 的不可变数据天然符合 **SoA 内存布局**：
+
+```typescript
+// AoS（Array of Structures）— OOP 风格
+interface Player {
+  position: { x: number, y: number, z: number }
+  velocity: { x: number, y: number, z: number }
+  hp: number
+}
+let players: Player[] = [...]
+
+// SoA（Structure of Arrays）— FP 风格，纯数据
+let positions   = new Float32Array(playerCount * 3)  // 连续内存
+let velocities  = new Float32Array(playerCount * 3)  // 连续内存
+let hp          = new Float32Array(playerCount)       // 连续内存
+```
+
+SoA 的好处：
+- **Cache locality**：处理 position 时只遍历 position 数组，不踩到 hp/velocity 的缓存行
+- **零 GC**：TypedArray 不在堆上分配，不触发 GC
+- **GPU 就绪**：Float32Array 可以直接上传到 GPU StorageBuffer，无需转换格式
+- **分支预测**：计算 hp 时不混入 position 的读取
+
+FP 让 SoA 变得自然，因为 FP 里数据是纯值（value），不是封装了方法的高耦合对象（object）。把一个 `Player` 对象的字段拆成几个 TypedArray，在 OOP 里需要大改——方法怎么调？封装在哪？FP 里本来就是 `executeCommand(state, cmd)`，`state` 是 `{positions, velocities, hp}` 几个数组，SoA 跟 FP 风格天然相容。
+
+> 这三件事——多线程、WebGPU、SoA——在 P8 阶段一个都没做，但这一天的 FP 决策让它们全部变成了「只要想做就能做」。相反，如果在 06-09 选了 OOP + 可变状态，后面任何一个方向的迁移都会需要「全部重写」。
+
 ---
 
 ## 2. 双服务架构：basic1 时期就有的设计
