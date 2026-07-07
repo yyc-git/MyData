@@ -6,227 +6,201 @@
 
 ---
 
-上一期说了 basic1 用 Lockstep 帧同步踩的坑：浮点数各平台不一致、回滚代码难以维护、调试复杂到怀疑人生。
+上期说了 basic1 用 Lockstep 帧同步踩的坑——我手写四天，被浮点数精度、回滚代码复杂度、跨平台不一致三个问题折磨到放弃。
 
-到 new_basic2，我们做了一个关键决定：**放弃帧同步，切换到状态同步。**
+但放弃帧同步不等于放弃多人联机。只是换条路走。
 
-这是整个项目最重要的架构决策，没有之一。
-
----
-
-## 转变动机：为什么放弃帧同步
-
-帧同步的核心理念很美：服务端只当中继，客户端执行相同的指令序列——理应得到相同结果。
-
-但在实践中，它有三个致命问题：
-
-**1. 浮点数不一致**
-服务端（Node 18）、客户端 A（Chrome Windows）、客户端 B（Safari macOS），同一个数学运算（比如 `position.x += velocity * deltaTime`）得到三个不同的结果。偏差一开始是 0.0001，几秒后变成 1 个身位，然后就穿模了。
-
-**2. 回滚代码难以维护**
-每个逻辑帧的流程：存储快照 → 执行服务端命令 → 对比差异 → 回滚 → 重放本地离线命令。这套 predict-reconcile-correct-resimulate 的代码堆了 300+ 行，每次改移动逻辑都要同步改回滚逻辑。AI 生成的代码在这种模式下特别容易崩——改一个地方忘了改快照，就会在某个帧上状态爆炸。
-
-**3. Debug 极其困难**
-A 看到 B 瞬移了——是 A 算错了还是 B 算错了还是服务端中继丢包了？没有权威参考系，每个人都只能猜。
-
-**关键认知转变：项目只有 2 个玩家，不是 8 个人的星际争霸。** 带宽不是瓶颈，代码可维护性才是。
-
-帧同步的带宽优势在这个场景用不上，反而被它的代码复杂度拖死。所以——**状态同步**。
+**2026 年 6 月 8 日，一整天，从 basic1 到 new_basic2。** 这是这个项目里**第一次让 AI 深度参与多人联机编码**——我从"纯手写"进入了"AI 辅助编程"阶段。
 
 ---
 
-## 服务端权威模型
+## 从 basic1 到 new_basic2
 
-状态同步的思路完全不同：**服务端计算一切，客户端只管展示。**
+改动看起来不大，但是质变：
 
 ```
-每个 tick（30fps 调试 / 10fps 生产）：
-  服务端收集所有玩家的输入
-  执行 executeCommand → 凸包碰撞检测 → 计算伤害
-  生成全量 MsgGameState（position, rotation, hp, collision, animation...）
-  广播给所有客户端
-  客户端收到 → 线性插值 → 渲染
+basic1（Meta3D + 帧同步）→ new_basic2（Three.js + 状态同步 + TSRPC）
 ```
 
-服务端不再是中继，而是权威。`Game.ts` 管理核心游戏循环：
+内核变化就一行：**服务器角色从"命令中继"变成了"状态权威"**。
+
+带来的连锁反应：
+- **去掉 Meta3D 引擎** → 引擎包袱剥离，包体积从 20.6MB 降到 7.95MB
+- **引入 Three.js** → 标准的 WebGL 渲染管线，文档多、社区大
+- **引入 TSRPC** → 全链路 TypeScript 类型安全，不再裸写 WebSocket 协议
+- **引入 AI** → 这次 AI 不再只是聊天采纳建议，而是真正参与写代码
+
+---
+
+## 10:30 - 13:10：状态同步 MVP
+
+一上午的产出：
+
+**服务端（demos/room-service/）**
+- 基于 TSRPC 的 WebSocket 服务
+- 15 FPS authoritative tick 循环
+- `executeCommand` 处理移动指令
+- `broadcastMsgGameState` 广播全量玩家状态
 
 ```typescript
-// 伪代码示意
+// 服务端 tick 循环 — Game.ts
 setInterval(() => {
-  if (currentGen !== generation) { clearInterval(timer); return }
-  state = executeCommand(state)        // 执行所有玩家命令
-  state = computeCollisionDamage(state) // 碰撞伤害计算
+  state = executeCommand(state)         // 执行所有玩家命令
+  state = computeCollisionDamage(state) // 碰撞检测
   broadcastMsgGameState(state)          // 广播全量状态
-}, interval)
+}, 1000 / 15)                           // 15 FPS
 ```
 
-客户端不再做任何逻辑计算，只做三件事：
-- 用 `sendMoveState` 把自己的输入发给服务端
-- 用 `onGameState` 监听服务端下发的 `MsgGameState`
-- 展示 + 插值
+**客户端（demos/new_basic2/）**
+- Three.js 渲染场景（天空 + 网格地面 + 两个方块表示玩家）
+- TSRPC `WsClient` 连接服务端
+- `onGameState` 接收状态 → 更新方块位置
+- 两个玩家在屏幕上移动成功，碰撞变红 ✅
 
-```typescript
-// 客户端：只管发输入
-export let sendMoveState = (state, isLeft, isRight, isForward, isBackward) => {
-    let anyDir = isLeft || isRight || isForward || isBackward
-    if (anyDir) {
-        return addCommand(state, commandType.Move, { ... })
-    } else {
-        return addCommand(state, commandType.Move, { /* not moving */ })
-    }
-}
-
-// 客户端：接收服务端权威状态
-client.listenMsg('GameState', (msg) => {
-    NullableUtils.forEach(handler => {
-        handler(msg.players)   // 更新插值缓冲区
-    }, _onGameStateHandler)
-    if (msg.enemies) {
-        setEnemyState(msg.enemies)  // AI 巨人状态
-    }
-})
-```
+这里有个关键细节：**我没有用 AI 直接生成 new_basic2 的全部代码**，而是在 basic1 的基础上，让 AI 辅助修改——告诉 AI "把帧同步改成状态同步""引入 TSRPC""替换引擎"。AI 不是从零开始的建筑师，而是高效的改造工。
 
 ---
 
-## TSRPC 引入
+## 15:10 - 16:20：小人模型 + 动画
 
-要实现服务端权威，需要一套可靠的通信框架。我们用了 **TSRPC**——TypeScript 全链路 RPC 框架。
+MVP 跑通后，接下来的改造重点是视觉。
 
-**为什么选 TSRPC：**
+**Step 1：FBX 模型替换方块**
+- 模型选用经典的小人模型 `Infantry.fbx`
+- 每个玩家独立加载 FBX 实例（不 clone，避免 SkinnedMesh 骨骼共享问题）
+- 缩放 4 倍便于观察
 
-1. **全链路类型安全**：一个 `serviceProto.ts` 定义所有 API 和消息类型。改一端，TS 编译全崩——不存在"前端以为发 string 服务端以为发 number"的问题。
-2. **WsClient + HttpClient 一体化**：room-service 用 WebSocket（实时推送），match-service 用 HTTP（请求-响应），共用同一套 proto 定义。
-3. **请求-响应 + 消息推送双模**：不需要手动解析 JSON，不需要自己写 WS 消息路由。`client.callApi('AddUser', {...})` 和 `client.listenMsg('GameState', handler)` 就够了。
+**Step 2：Idle / Running 动画**
+- `Idle.fbx`（54 track，2 秒循环）
+- `Running.fbx`（54 track，0.83 秒循环）
+- 用 Three.js `AnimationMixer` 管理每个玩家的动画状态机
 
-```typescript
-// 创建 room 服务客户端
-let client = new WsClient(serviceProto, {
-    server: getUrlById(getIsDebug(state), roomId),
-    json: true,
-    heartbeat: {
-        interval: getIsDebug(state) ? 200000 : 2000,
-        timeout: getIsDebug(state) ? 500000 : 5000
-    }
-})
+**😤 坑：FBX 动画 Clip 名冲突**
 
-// 创建 match 服务客户端
-let matchClient = new HttpClient(mathServiceServiceProto, {
-    server: getIsDebug(state) ? "http://127.0.0.1:3000" : getMatchServiceUrl(),
-    json: true,
-})
-```
+所有从 Mixamo 导出的 FBX 动画，clip 名字都叫 `'mixamo.com'`。`mixer.clipAction('mixamo.com')` 永远返回同一个 action 实例——意味着一改 idle，running 也跟着变。
 
-**😤 坑：bigint 传不了**
+解法：创建 clip 时用 `clip.clone()` 重命名为唯一名（`username_idle` / `username_run`）。
 
-TypeScript 的 `bigint` 在编译到 JavaScript 时变成 `BigInt` 对象。TSRPC 的 `encodeJSON` 又做了一层序列化——结果 bigint 在传输链上经历了 `bigint → BigInt → string` 的两层转换，服务端收到的是字符串而不是数字。
+**😤 坑：按钮只触发一次指令**
 
-解决很简单：不用 bigint，直接用 `number`。多人场景下 2 个玩家，`number` 的 53 位精度足够。
+方向按钮按一次，`sendMoveState` 只发一条命令，服务端执行一次就停了。表现为点一下走一步。
+
+解法：长按时用 `setInterval` 持续发命令，松开时 `clearInterval`。
+
+这两个坑都是典型的前后端分离认知偏差——单机游戏是事件驱动的“点击→响应”，网络游戏需要持续的状态流。
 
 ---
 
-## 客户端渲染：插值 + 预测 + 修正
+## 16:26 - 16:50：WASD 控制 + 摄像头 + 客户端预测
 
-状态同步下，客户端每 tick 收到一次服务端快照（生产环境 10fps，即 100ms 一次）。直接赋值位置会看到"瞬移"，所以需要平滑：
+**CameraController.ts**
+- 第三人称跟随，鼠标左键拖拽旋转，滚轮缩放
+- 初始半径 360 单位，far plane 1000
+- 自动跟随本地玩家位置（`camera.position.lerp(target, 0.05)`）
 
-**1. 线性插值（Interpolation）**
+**WASD 键盘控制**
+- `keydown` / `keyup` 监听
+- 按住时 200ms 向服务端发一次移动指令
 
-每收到一个 GameState，存到缓冲区。渲染帧之间用前后两帧做线性插值：
+**客户端预测——试了三个版本**
+
+状态同步最大的用户体验问题是延迟：你的输入到服务端，服务端踢回来，一个来回至少 50-100ms。本地角色不立刻响应的话，手感会像在沼泽里走路。
+
+- **尝试 1（时间锚点预测）**：`pos = anchor + dir * speed * (now - anchorTime)` → 各窗口漂移不一致
+- **尝试 2（每帧 deltaTime + 3% 修正）**：60FPS 本地移动 + 每帧 3% 拉向服务端位置 → 有拉扯感，速度变慢
+- **最终方案（deltaTime 预测 + 服务端覆盖）**：本地即时响应按键移动，服务端 GameState 回来时直接覆盖所有玩家的位置。效果平滑 ✅
 
 ```typescript
-let _interp: ImmutableMap<string, InterpEntry> = ImmutableMap()
+// 客户端：本地即时移动（60FPS）
+Scene.tsx:
+  mesh.position.x += dirX * speed * deltaTime
+  mesh.position.z += dirZ * speed * deltaTime
 
-// 每帧调用
-function getInterpolatedPlayers(currentTime) {
-    _interp.forEach((entry, username) => {
-        let t = (currentTime - entry.prevTime) / (entry.nextTime - entry.prevTime)
-        let x = entry.prevPos.x + (entry.nextPos.x - entry.prevPos.x) * t
-        // 对 y, z 做同样计算...
-        return { x, y, z }
-    })
-}
+// 客户端：收到服务端 GameState 直接覆盖
+onGameState(msg):
+  msg.players.forEach(p => {
+    let mesh = playerMeshes.get(p.username)
+    mesh.position.set(p.x, p.y, p.z)
+  })
 ```
 
-**2. 本地向前预测（Prediction）**
+核心思路：**自己按 60FPS 跑着爽，服务端按 15FPS 纠正。** 用户每秒看到 60 帧的本地响应 + 15 次服务端纠正，体感完全平滑。
 
-自己的输入不需要等服务端确认——本地立刻响应。按下 W，自己的角色立刻向前走，不等 100ms 后的 GameState 回来。
+---
+
+## 17:00 - 17:45：MMD 巨大娘 + 碰撞系统
+
+**第一版角色区分**
+- 房主（Creator）→ 巨大娘模型（PMX 格式）
+- 成员（Member）→ 小人模型（FBX 格式）
+
+**PMX 模型加载**用了 Three.js 的 `MMDLoader`，配合 `CCDIKSolver` 处理脚部 IK：
+- idle 动画：`idle.vmd`（1.4MB，54 bone tracks）
+- walk 动画：`walk.vmd`
+- MMDPhysics 关闭，IK 由 Loader 自动处理
+
+**碰撞系统（服务端实现）**
+
+终于吸取了 basic1 的教训——碰撞检测放**服务端**：
 
 ```typescript
-// 键盘事件直接影响本地位置
-let _predictionDir = { x: 0, z: 0 }
-// ManageScene 每帧读取按键状态，更新本地位置
-```
-
-**3. 服务端修正（Correction）**
-
-当服务端 GameState 回来发现和预测位置不一致时，平滑拉回到服务端认定的位置：
-
-```typescript
-let _correctionTarget = null  // 由 GameState handler 设置
-
-// 渲染循环中做平滑拉回
-if (_correctionTarget) {
-    // lerp 到目标位置
-    currentPos.x += (_correctionTarget.x - currentPos.x) * 0.1
-    currentPos.z += (_correctionTarget.z - currentPos.z) * 0.1
+// 服务端 Game.ts：检查两玩家 XZ 距离
+function _isCollision(p1, p2) {
+  let dx = p1.x - p2.x
+  let dz = p1.z - p2.z
+  return Math.sqrt(dx * dx + dz * dz) < 1.0
 }
 ```
 
-这套"预测 + 修正"不需要 rollback，因为不做服务端模拟，只修正自己的位置。
+服务端算出碰撞状态后，通过 `MsgGameState` 的 `isCollision` 字段广播到客户端。客户端只负责渲染碰撞盒颜色（绿色正常 / 红色碰撞）。
+
+碰撞盒尺寸按角色类型不同：
+- 巨大娘：4×8×3（宽×高×深）
+- 小人：0.8×1.8×0.5
+
+用 `EdgesGeometry` + `LineSegments` 替代 `BoxHelper`，实现自定义尺寸。
 
 ---
 
-## 双轨动画系统
+## 17:50 - 18:00：AI 巨大娘（第一版）
 
-由于模型来源不同，前端需要同时加载两种格式的角色：
-
-| 角色 | 格式 | 加载器 | 动画类型 |
-|------|------|--------|---------|
-| 巨大娘（Giantess） | PMX + VMD | MMDLoader | MMD 烘焙动画（Idle/Running） |
-| 小人（Little Man） | FBX | FBXLoader | 骨骼动画（Idle, Walk, Run...） |
-
-各自的动画状态机独立管理：
+这可能是最有趣的功能——用一个 MMD 巨大娘在地图上自动追玩家：
 
 ```typescript
-// MMD 巨人走 Idle → Walk 切换
-// FBX 小人有完整的 Blend Tree
-
-let _playerAnimations = new Map<string, AnimationState>()
-
-function setPlayerAnimationState(username, isMoving) {
-    let anim = _playerAnimations.get(username)
-    if (anim) {
-        anim.crossFade(isMoving ? 'walk' : 'idle', 0.1)
-    }
+// 服务端：每 tick 向目标玩家移动
+function _updateAI(enemyState, players) {
+  if (players.length === 0) return
+  let target = players[0]
+  // 计算朝向，speed=0.8 向目标移动
+  let dx = target.x - enemyState.x
+  let dz = target.z - enemyState.z
+  enemyState.x += normalize(dx, dz) * 0.8
+  enemyState.z += normalize(dz, dx) * 0.8
 }
 ```
 
-两种格式共存带来的额外复杂性，在 Phase 6（服务端权威完整实现）中得到了统一处理——这部分后面 P11 会细讲。
+出生位置 (0, 0, -30)，向第一个玩家方向缓慢移动。客户端收到 `enemies` 数据后更新 MMD 模型的动画状态切换（idle ↔ walk）。
+
+这个功能虽然简单，但意义很大——**证明了服务端可以同时处理玩家 + AI 的状态同步**，为后来大型 AI 系统打下基础。
 
 ---
 
-## 阶段总结
+## 当天总结：从手写做人到 AI 辅助
 
-从 basic1 到 new_basic2，核心的变化只有一行，但影响深远：
+6 月 8 日的产出：
 
-> **服务器角色从"中继"变成了"权威"。**
+| 时段 | 内容 | 参与方式 |
+|------|------|---------|
+| 上午（~3h） | 状态同步 MVP（TSRPC + Three.js） | AI 辅助改造 basic1 |
+| 下午前半（~1h） | FBX 模型 + 动画系统 | AI 辅助 + 我修复 AI 坑 |
+| 下午中段（~1h） | Camera + WASD + 预测方案迭代 | 我主导方向 + AI 实现 |
+| 下午后段（~1h） | MMD 巨大娘 + 碰撞系统 | AI 辅助 |
+| 傍晚（~10min） | AI 巨大娘 | AI 生成 |
 
-带来的收益：
-- ✅ 客户端代码大幅简化（300+ 行回滚代码 → 50 行插值）
-- ✅ Debug 有参考系（服务端状态 = 标准答案）
-- ✅ AI 编写更容易（没有"保持一致"的隐性需求）
-- ✅ 浮点问题归服务端（只有 1 个浮点数来源）
-- ✅ 防作弊天然支持（服务端说了算）
+这是**第一次真正尝到 AI 辅助编程的甜头**。basic1 我一个人写了四天，new_basic2 的核心功能在一天内完成。
 
-代价：
-- ❌ 带宽增大了（全量状态每 tick 广播，而不是几条指令）
-- ❌ 服务端成本增加了（要跑游戏循环 + 碰撞检测）
-- ❌ 响应延迟增加（自己的输入要等服务端确认才能在其他玩家处看到）
+但代价也很明显——**AI 生成的代码留下了大量的隐性技术债**：服务端代码更新后必须手动重启（我 debug 半小时才发现）、TSRPC 的 `serviceProto.ts` 不会自动同步协议修改、FBX 动画同名 clip 的坑……这些坑在 basic1 里不会出现（我自己写的，每行都清楚），但在 AI 辅助模式下面，它们会静悄悄地累积。
 
-**但在 2 人场景下，这三条代价几乎可以忽略。** 带宽多几十字节、服务器多跑一个 setInterval、100ms 延迟——都比帧同步的维护成本低了一个数量级。
-
----
-
-从 new_basic2 的状态同步 Demo 到 Lerna Monorepo 四包结构，中间只隔了一周。下期讲 **P8：大重构**——Monorepo + 双服务 + Logic 共享层 + 开闭原则，一天内全部落地。
+从 new_basic2 到 Lerna Monorepo 四包结构，中间只隔了一天。下期讲 **P8：大重构**——Monorepo + 双服务 + Logic 共享层 + 开闭原则，一天内全部落地。
 
 **下一篇：[Vibe Coding 多人游戏（八）—— 大重构：Monorepo + 双服务 + Logic 共享层 + 开闭原则](https://www.cnblogs.com/chaogex/p/21195307)**
