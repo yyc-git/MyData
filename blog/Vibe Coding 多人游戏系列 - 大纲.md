@@ -227,7 +227,7 @@
    - 代次守卫（generation++）：防 warm container 定时器残留
    - 调试 30fps / 生产 10fps
 2. **核心循环**
-   - 收集玩家命令 → executeCommand → OBB 碰撞检测 → 计算伤害 → 检查游戏状态 → 广播 MsgGameState
+   - 收集玩家命令 → executeCommand → 凸包碰撞检测 → 计算伤害 → 检查游戏状态 → 广播 MsgGameState
 3. **AI giantess 行为逻辑**
    - 自动移动路径规划
    - 玩家碰撞判定
@@ -235,15 +235,19 @@
 4. **绝对状态下发**
    - `MsgGameState` 含全量字段（position, rotation, hp, collision, animation 等）
    - 客户端不做计算，只展示 + 插值
-5. **OBB 碰撞箱系统**
-   - OBB（Oriented Bounding Box，有向包围盒）
-   - 支持旋转物体的精确碰撞
+5. **碰撞检测：OBB → 凸包（Convex Hull）**
+   - v1：AABB（Axis-Aligned Bounding Box）——最简单但旋转物体不准
+   - v2：OBB（Oriented Bounding Box，有向包围盒）——支持旋转物体的精确碰撞
+   - v3：凸包（Convex Hull）——在 OBB 基础上进一步优化，用物体实际轮廓的点集构造凸包，碰撞判定更精确
+   - 凸包 vs OBB：OBB 对倾斜/细长物体仍有空隙区域，凸包贴合实际形状，碰撞反馈更自然
+   - 实现：服务端用凸包点集做分离轴测试（SAT），前端同样实现在 Logic 共享层
 6. **双轨动画管理**
    - MMD + FBX 分开的动画状态机
    - 每类模型有自己的 Idle → Walk 切换逻辑
 7. **坑**
    - 🕳️ **warm container 定时器残留** → 代次守卫解决
-   - 🕳️ **AABB 碰撞不够** → 升级到 OBB
+   - 🕳️ **AABB 碰撞不够** → 升级到 OBB → 再升级到凸包
+   - 🕳️ **OBB 仍有空隙** → 凸包消除误判
    - 🕳️ **AI giantess 寻路卡死**：路径规划在服务端 setInterval 里阻塞后续 tick
 
 ---
@@ -311,6 +315,18 @@
 3. **每个坑的 E2E 测试锁定**
    - 7 场景 BDD 覆盖：服务可达、WS 连接、无 ESM 错误等
    - 每次部署前自动运行
+4. **Warm Container 生命周期**
+   - SCF 空闲 15 分钟回收实例（可配），下次请求冷启动
+   - 冷启动耗时 ~1-3 秒，影响第一局匹配体验
+   - **热保活策略**：心跳 keep-alive 请求每 2s 发一次（生产），避免回收
+   - 双实例（room1 + room2）各自独立 warm，一个回收不影响另一个
+   - 🕳️ **冷启动瞬间并发**：两个玩家同时连入 → 两个新实例同时初始化 → 可能冲突 → 需排队锁
+5. **生产运维与监控**
+   - **日志策略**：SCF 自带日志服务，CLS 采集 stdout/stderr，保留 7 天
+   - **实时调试**：gts-logs 自动拉取最近 100 条日志，按 room/match 过滤
+   - **告警规则**：实例崩溃自动重启（SCF 自带），无玩家时自动缩容
+   - **版本回退**：deploy-scf.js 支持指定版本号回退，一键还原旧版本
+   - **room→match 重启依赖**：room 重启后 match 的 WS 连接断开，必须连带重启 match
 
 ---
 
@@ -368,7 +384,7 @@
    - SAB（SharedArrayBuffer）双缓冲架构：~512KB，Header + Frame A/B + Result
    - **三线程分工**：
      - 主线程：Game Logic + 渲染同步 + ECS 状态管理（写 EntityStore）
-     - Logic Worker：MMD 动画 + FBX 动画 + OBB 碰撞（~1-2周可做，不依赖 WebGPU）
+     - Logic Worker：MMD 动画 + FBX 动画 + 凸包碰撞（~1-2周可做，不依赖 WebGPU）
      - Render Worker（远期）：OffscreenCanvas + WebGPURenderer（角色 >20 时才需要）
    - 核心障碍：Three.js Scene 不能跨线程
      - 解法：SAB 存纯数据（transform/anim/boneMats），Render Worker 维护独立 Scene + 对象池
@@ -382,7 +398,7 @@
    - 对应 IRenderer 新增接口：BackendCapabilities / dispatchCompute / renderIndirect / syncFromEntityStore
 6. **实施路线图**
    - Phase 1（已做完）：EntityStore 基建（TransformStore + VisualStore + 对象池）
-   - Phase 2（近期）：Logic Worker（MMD+FBX 动画 + OBB 碰撞，不依赖 WebGPU）
+   - Phase 2（近期）：Logic Worker（MMD+FBX 动画 + 凸包碰撞，不依赖 WebGPU）
    - Phase 3（中期）：WebGPU 切换（ThreeRenderer 双后端，~1周）
    - Phase 4（后期）：GPU-Driven（GPU 碰撞 → LOD → Frustum Cull）
    - Phase 5（远期）：Render Worker（OffscreenCanvas + SAB，角色 >20 个）
@@ -798,13 +814,17 @@
 2. **环境管理**
    - production + test 双环境
    - URL 参数控制：`?isDebug=true`
+   - 双环境独立配置（内存、超时、并发数）
 3. **SCF 实例架构**
    - room1 + room2 双实例并发
    - 各支持 2 人，共 4 人
+   - 各自独立 warm container，互不影响
 4. **SCF 配置速查**
+   - 运行时：Node.js 18
+   - 内存：512MB（room-service）/ 256MB（match-service）
    - 自定义静态并发：10
    - 超时：15 分钟无请求 warm container 回收
-   - zip 结构
+   - zip 结构：`svc/` + `node_modules/` + `scf_bootstrap` + `package.json`
 5. **scf_bootstrap 修复全记录**
    - 权限问题（Windows Compress-Archive 不保留 +x）
    - 路径问题（../../../ 跑飞）
@@ -812,17 +832,25 @@
 6. **BDD 测试锁定**
    - 7 场景覆盖部署质量
    - 部署前自动运行
-7. **服务端口**
+7. **生产运维全流程**
+   - **部署**：AI 开发 → AI 验收 → AI 部署 → E2E 验证（全程自动化）
+   - **监控**：gts-logs 实时拉日志，按时间/实例/级别过滤
+   - **告警**：SCF 自带实例崩溃恢复 + 自定义冷启动超时告警
+   - **热修复**：发现问题 → AI 改代码 → 秒级部署，不进控制台
+   - **版本管理**：deploy-scf.js 支持版本号标注，可回退到任意历史版本
+8. **服务端口**
    - room-service：4003（WebSocket）
    - match-service：3000（HTTP）
    - webpack-dev-server：8093
-8. **启动顺序**
+9. **启动顺序**
    - 先 room-service，再 match-service
    - 重启 room 后必须重启 match（room 重启断开 match 的 WS 连接）
-9. **调试 VS 生产**
-   - Tick 30fps（调试）/ 10fps（生产）
-   - 心跳 200s（调试）/ 2s（生产）
-10. **日志抓取**
+   - 重启脚本：gts-service skill 一键重启双服务
+10. **调试 VS 生产**
+    - Tick 30fps（调试）/ 10fps（生产）
+    - 心跳 200s（调试）/ 2s（生产）
+    - 日志级别 verbose（调试）/ info（生产）
+11. **日志抓取**
     - gts-logs：自动抓取 SCF 日志
     - 微信/飞书通知
 
@@ -986,10 +1014,11 @@
    - Socket hang up 误判：等输出不等同卡住
    - Object.keys(Immutable.Map()) 永远为真
    - 状态重置遗漏：gameStop 未重置 flag
-6. **12 个可复用设计模式**
+6. **13 个可复用设计模式**
    - **服务端权威 + 绝对状态**：最简多人同步方案
    - **开闭原则**：AI 协作的第一架构约束
    - **纯函数共享层**：ReScript + bundle，两端行为一致
+   - **渐进式碰撞精度**：AABB → OBB → 凸包，每步只解决当前痛点
    - **代次守卫**：generation++ / countdownGeneration 乐观锁
    - **SoA 状态管理**：TransformStore/VisualStore，**WebGPU/多线程就绪的纯数据架构**
    - **事件驱动**：新行为 = 新 handler，不改现有逻辑
