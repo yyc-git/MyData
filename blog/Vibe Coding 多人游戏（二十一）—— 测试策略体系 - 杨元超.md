@@ -182,6 +182,91 @@ E2E 同时支持本地和在线的场景验证，用哪个环境由场景 JSON �
 
 ---
 
+## E2E 自动测试实坑
+
+三层测试体系的顶层是 E2E 自动测试。我们有专用的 Skill 来跑它——`gts-e2e-test`（手动双窗口）和 `gts-e2e-auto`（自动化 scenarios）。这些 Skill 本身就是在踩坑中迭代出来的。
+
+### 坑 1：Playwright 时序不稳定
+
+Playwright 的 `click()` 和 `hover()` 是带自动等待的，但它等的只是"元素出现"，不是"元素可以交互"。比如：
+
+```typescript
+// 坑：元素出现了但定位动画还没完
+await page.click('.join-button')  // Playwright 算点击到元素了
+// 实际上 .join-button 还在做位置动画，点击被接收但位置不对
+```
+
+**修复**：改为 `waitForSelector` + `waitForFunction` 双保险，确认元素可见且可交互后再操作。
+
+```typescript
+await page.waitForSelector('.join-button', { state: 'visible' })
+await page.waitForFunction(() => {
+    const btn = document.querySelector('.join-button')
+    return btn && btn.getBoundingClientRect().width > 0
+})
+await page.click('.join-button')
+```
+
+### 坑 2：双窗口同步
+
+多人游戏的 E2E 测试需要两个浏览器窗口——一个创建房间，一个加入。两个窗口的操作时序问题是最大的坑。
+
+```
+窗口 A：创建房间 → 等待匹配
+窗口 B：刷新房间列表 → 加入 → 准备
+问题：窗口 B 的"刷新"操作发生在窗口 A "创建成功"之前 → 房间列表为空 → 测试失败
+```
+
+**修复**：在 scenarios JSON（积木系统的场景层）中，每个场景的 blocks 执行顺序加上显式的 `afterBlock` 依赖声明：
+
+```json
+{
+    "name": "双人正常匹配进入游戏",
+    "blocks": ["loginAsCreator", "loginAsJoiner"],
+    "dependencies": {
+        "loginAsJoiner": { "after": "loginAsCreator" }
+    }
+}
+```
+
+执行器按依赖拓扑排序 blocks，确保时序正确。
+
+### 坑 3：本地通过，SCF 不通过
+
+最常见的 E2E 坑——本地测试一切正常，部署到 SCF 线上就挂了。原因一般是：
+
+- **冷启动**：SCF 实例第一次被唤醒时，WebSocket 建立比本地慢几百毫秒（容器初始化 + 网络路由）。Playwright 的等待时间没考虑到这个延迟。
+- **网络延迟**：本地 WS 延迟 <1ms，线上可能 30-50ms。帧同步的 tick 间隔本地没问题，线上就会丢包。
+
+**修复**：E2E 测试脚本区分本地/线上模式。线上模式增加 2x 的等待超时，关键操作（如"进入游戏"）用轮询等待而非固定 timeout。
+
+```typescript
+const IS_SCF = process.env.TEST_TARGET === 'scf'
+const TIMEOUT = IS_SCF ? 10000 : 5000  // SCF 线上翻倍
+```
+
+### 坑 4：截图对比不可靠
+
+早期 E2E 测试用截图对比来验证 UI 状态——测试先截一张"期望图"，运行时再截一张对比，像素 diff。
+
+问题是：Three.js 渲染的帧率不稳定——同一场景在不同机器上截图可能有几像素的差异。10px 的 diff 就报失败，但实际上功能是对的。
+
+**修复**：放弃截图对比，改用 DOM 状态断言：
+
+```typescript
+// 截图对比（放弃）
+// await expect(page).toHaveScreenshot('game-view.png')
+
+// DOM 状态断言（采用）
+const hudText = await page.textContent('.hud-health')
+expect(hudText).toBe('100')
+const gameState = await page.evaluate(() => window.__GAME_STATE__)
+expect(gameState.isPlaying).toBe(true)
+```
+
+状态断言比截图可靠得多，而且运行时开销更小。
+
+
 ## 测试的 AI 适配
 
 为了让 AI 能自己写和跑测试，测试框架必须满足：

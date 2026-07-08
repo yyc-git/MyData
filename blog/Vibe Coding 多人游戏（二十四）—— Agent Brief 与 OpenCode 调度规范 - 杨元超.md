@@ -191,6 +191,43 @@ OpenCode 调度规范也不是一天形成的。我经历了三个阶段：
 
 ---
 
+### OpenCode 调度实坑
+
+有了规范还不够——实际调度 OpenCode 时踩过的坑比规范里写的多得多。
+
+#### 坑 1：模型选错，花 2 倍的钱做半倍的活
+
+最频繁的坑。用 Flash 做根因分析——结果 AI 分析了 40 分钟，输出了一个"可能的根因列表"和"建议排查方向"，全是模糊的推断。换成 Pro + max 后 8 分钟就给出了精确的根因和修复方案。
+
+反过来，用 Pro 写简单测试——花 3 倍 token 做了 Flash Free 也能 1 分钟搞定的事。
+
+**修复**：模型选择速查表（上文已列）。调度前先判断任务类型，再选模型。
+
+#### 坑 2：旧进程残留，新调度撞车
+
+OpenCode 的 `opencode run` 启动一个新进程。如果上次调度没正常退出（比如兄弟直接关了终端），旧进程还在跑。新调度启动时，两个 OpenCode 同时读写同一组文件——一个在改 `feature` 文件，另一个在改同样文件的 `.steps.ts`。
+
+结果：文件互相覆盖，最终产物是两份修改的混乱拼接。
+
+**修复**：调度前先清理旧 `.opencode-brief.md`，以及用 `Get-Process | Where-Object ...` 精确杀同名 opencode 进程（不杀其他 node 进程）。具体见 `skills/opencode-schedule/SKILL.md` 中的清理步骤。
+
+#### 坑 3：Brief 太胖，AI 上下文爆炸
+
+一个好心的兄弟——把所有上下文全部塞进 brief：完整的 project-context.md + 方案文档 + 4 个 .feature 文件 + 5 个 .steps.ts + 编码红线 + BDD 规范 + 返回格式要求。光 brief 就 8000 多字。
+
+Free 模型的 context window 只有 200k，一个 8000 字的 brief 直接占掉了 10%。AI 读完后半段都已经忘了前半段写了什么。
+
+**修复**：共享规约引用 `docs/agent-context.md`，不逐条贴。方案只贴摘要 + 文件路径。场景清单只贴场景名列表，具体内容在 OpenCode 的 `--dir` scope 中可读。Brief 控制在 1500 字以内。
+
+#### 坑 4：Timeout 不设，AI 卡死 3 小时
+
+早期 OpenCode 调度没设 timeout。AI 遇到一个复杂问题——需要拆成 3 步完成，但 AI 一直卡在第 1 步，反复尝试同一个错误方案。因为没设 timeout，AI 可以无限循环下去。
+
+最终是兄弟等了 3 小时，发现没动静，手动 kill 的。
+
+**修复**：不设 timeout（`timeout: 0`）让 AI 跑完复杂任务，但加一个外部 watchdog——进程 20 分钟没有任何输出时，通过 cron 通知兄弟检查。Skill 中的 `process(action=poll, timeout=30000)` 循环不会永久卡，因为 poll 本身有 timeout。
+
+
 ## 附录：OpenCode 调度 Skill
 
 调度规范最终固化成了一个可复用的 Skill。以下是完整内容（摘自 `opencode-schedule/SKILL.md`）：

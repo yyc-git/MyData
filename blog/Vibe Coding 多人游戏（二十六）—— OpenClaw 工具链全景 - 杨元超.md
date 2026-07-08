@@ -12,7 +12,7 @@ OpenClaw 是一个 AI 网关/代理平台，GTS-Play 用它做开发流程的调
 
 ---
 
-## 16 个 Skill 全家桶
+## 22 个 Skill 全家桶
 
 **开发类：**
 
@@ -71,6 +71,30 @@ OpenClaw 是一个 AI 网关/代理平台，GTS-Play 用它做开发流程的调
 | gts-recall | 查记忆+近对话，分析工作进展 |
 
 `gts-recall` 是最"软"的 Skill。它不生成代码、不跑测试——只查记忆、查近期的对话记录，然后给一个"工作简报"：过去几天做了什么、有哪些进展、下一步建议。对于长期项目的回顾特别有用，尤其是兄弟隔了一周没开发，回来不知道从哪继续。
+
+**内容生产类：**
+
+| Skill | 作用 |
+|-------|------|
+| yuque-jianshu-fetch | 抓取语雀知识库/简书文章转 Markdown 保存到笔记目录 |
+| zhihu-auto-publish | CDP 控制 Chrome 粘贴 HTML 到知乎编辑器 |
+| cnblogs-publish | MetaWeblog API 自动发布 Markdown 到博客园 |
+
+`yuque-jianshu-fetch` 解决的是"知识同步"问题——语雀上的技术文章不能直接当本地 Markdown 用。这个 Skill 抓取语雀文档内容 + 简书文章，转为标准 Markdown 格式保存到笔记目录。语雀的 API 需要 OAuth 鉴权，简书不需要登录但需要处理 HTML 转 Markdown 的格式问题。
+
+`zhihu-auto-publish` 是发布工具——通过 Playwright CDP 连接 Chrome 浏览器实例，打开知乎专栏编辑器粘贴 HTML 内容。知乎编辑器不接受 Markdown 粘贴，必须先转 HTML。这个 Skill 用到纯前端 JS 的 `TurndownService`（HTML→Markdown 反向工具）来处理格式转换。发布前必须人工检查，因为 CDP 控制浏览器存在死链接和误操作的风险。
+
+`cnblogs-publish` 走的是博客园的 MetaWeblog API（XML-RPC 协议），纯后端操作，不需要浏览器。它处理 Markdown 渲染——博客园的 Markdown 引擎和标准的 GFM 有差异，需要在发布前用 `marked` + 自定义 renderer 做一次渲染适配。
+
+**搜索类：**
+
+| Skill | 作用 |
+|-------|------|
+| web-search | 多源 Web 搜索（firecrawl/searXNG），带去重 |
+
+`web-search` 是一个看起来简单但其实有坑的 Skill。搜索工具(web_search)只返回摘要，不返回完整内容——摘要可能截断了关键信息。所以标准流程是：搜索 → 读摘要筛选 → 用 web_fetch 拉完整页面 → 去重合并。中文搜索还有个额外的问题：同一 query 在不同时间返回不同结果，所以搜索后要尽量把可用的页面都抓下来，减少重复搜索。
+
+
 
 ---
 
