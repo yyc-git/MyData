@@ -167,6 +167,10 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 
 ### Step 4-6：TDD 流程固化 + Skill 标准化 + 自动部署 + E2E 自测 + Specs（2026年6月中旬-7月初）
 
+> 完整的 6 步工作流进化为：AI 辅助编程 → OpenClaw 全自动 → OpenCode 引入 → TDD → Skill 固化 → 自动部署/E2E/Specs。
+
+
+
 后面几步是持续优化：
 
 - **TDD 流程**：先写 BDD 测试让 bug 真实 RED → 再修复让测试 GREEN。这是代码质量的基础。任何没测试覆盖的代码都被视为「不存在的代码」
@@ -175,7 +179,7 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 - **E2E 自测 + 根因修复**：让 AI 自己复现 bug → 打日志定位 → 修复 → 验证。配合 Chromium CDP 实现 WebSocket 连接的验证
 - **Specs 体系**：先出规格再开工。Main Specs 概览，Delta Specs 讲清楚这次改动什么、不动什么。兄弟确认后再干活
 
-每一步的详细过程在 **P12-P15 工作流进化** 篇展开。
+每一步的详细过程在 **P12-P16 工作流进化** 篇展开。
 
 ### 测试体系进化：从零到三层的历程
 
@@ -194,7 +198,7 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 
 ---
 
-## 知识管理速览（P16-P29，13 个主题）
+## 知识管理速览（P17-P29，13 个主题）
 
 | 主题 | 一句话说清 |
 |------|-----------|
@@ -203,14 +207,14 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 | Specs 体系 | Main Specs + Delta Specs + 变更管理。Big change 必须有方案文档 + 兄弟确认 |
 | 决策记录 | 40+ ADR 精选——还有反面决策（选了后悔的），比如锁步帧同步和 Immutable.js |
 | 测试体系 | 单元 AI 自动，集成半自动带 mock 问题，E2E 手动辅助配合 Playwright |
-| Token 优化 | 月费从 3000+ 降到 100+ 的实操方案：调度分离 + 缓存优化 + 上下文精简 |
+| Token 优化 | 月费从 3000+ 降到几百元的实操方案：调度分离 + 缓存优化 + 上下文精简 |
 | 记忆管理 | 33 个锚点词，检索协议。每天自动存档，对话结束后强制总结 |
 | Agent Brief | 体验式反馈 > 技术 spec——给 AI 反馈「角色走路不自然」比「radius 设 360」更有效 |
 | 部署管理 | SCF 双环境（production/test）双实例（room1/room2）全自动化 |
-| 工具链 | 十余个 Skill 全家桶：从 gts-save-flow 到 gts-e2e-test 到 gts-deploy |
+| 工具链 | 23 个 Skill 全家桶：从 gts-save-flow 到 gts-e2e-test 到 gts-deploy |
 | 前端性能 | SoA、帧管理、MMD+FBX 双轨——更是个架构决策，为 WebGPU + 多线程铺路 |
 | 通信可靠性 | WS 断连、重连、竞态、防御式编程。beforeunload 发 disconnect 修复了 HMR 断连问题 |
-| 反模式与设计模式 | 6 类坑 root cause + 13 个可复用模式——我自己常犯的错也列进去了 |
+| 反模式与设计模式 | 6 类坑 root cause + 17 个可复用模式——我自己常犯的错也列进去了 |
 
 ---
 
@@ -248,11 +252,11 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 ## 后续每篇的推荐阅读顺序
 
 - **想了解全貌：** P5（这篇）→ 挑感兴趣的时间线篇 → 挑感兴趣的知识篇
-- **想上手实操：** P5 → P30 起步指南 → P12-P15 工作流 → P21 测试 → P22 Token → P17 规则
+- **想上手实操：** P5 → P30 起步指南 → P12-P16 工作流 → P21 测试 → P22 Token → P17 规则
 - **想避坑：** P5 → P10 部署 → P29 反模式 → P18 重构标准
 - **时间线通读：** P5 → P6 → P7 → P8 → P9 → P10
 - **想了解 AI 协作方法论：** P5 → P12 → P13 → P14 → P15 → P16 → P17 → P19 → P22 → P23 → P29
 
 ---
 
-**下一篇：[Vibe Coding 多人游戏（六）—— Phase 1：basic1 帧同步（Lockstep）](https://www.cnblogs.com/chaogex/p/21195307)**
+**下一篇：[Vibe Coding 多人游戏（六）—— Phase 1：basic1 帧同步（Lockstep）](https://www.cnblogs.com/chaogex/p/21240098)**
