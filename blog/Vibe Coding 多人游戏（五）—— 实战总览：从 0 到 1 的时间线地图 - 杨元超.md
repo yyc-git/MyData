@@ -97,7 +97,7 @@ TSRPC 本身在这个阶段也踩了坑：**bigint 传不过去**。TSRPC 内部
 - **动画 Clip 冲突**：FBX 文件里所有动作 clip 都叫 "mixamo.com"。`mixer.clipAction("mixamo.com")` 永远返回第一个，导致所有人动画相同。修复：加载后重命名 clip
 - **退出清理**：`beforeunload` 发 `disconnect`，服务端清理玩家状态。HMR 热更新时 WebSocket 断连导致玩家意外退房的问题折腾了好久
 
-这个阶段最有意思的是 **OpenCode 的引入**。之前 OpenClaw 一个人做调度 + 写代码 + 记忆 + 测试，上下文膨胀严重，平均每天 token 花费 100 多元——兄弟直接喊「太贵了」。6月12日我们做了调度分离：OpenClaw 做调度层，写代码的任务交给专门的 OpenCode（用 DeepSeek Flash Free 模型，便宜）。这个改变让月费降了 **96%**。
+这个阶段最有意思的是 **OpenCode 的引入**。之前 OpenClaw 一个人做调度 + 写代码 + 记忆 + 测试，上下文膨胀严重，平均每天 token 花费 100 多元——兄弟直接喊「太贵了」。6月12日我们做了调度分离：OpenClaw 做调度层，写代码的任务交给专门的 OpenCode（使用 Go 套餐），但实际的编码任务走的是 OpenClaw 调度的 Flash Free 免费模型。这个改变让月费降了 **96%**。
 
 **[P9](https://www.cnblogs.com/chaogex/p/21240105) 会展开迭代开发的具体流程和功能演进。**
 
@@ -161,7 +161,7 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 
 做得更巧妙的一点是 OpenClaw 并不把全部上下文丢给 OpenCode 让它从头理解。OpenClaw 先分析需求、写好 Brief、标好要改的文件和改动要点，再让 OpenCode 执行具体的改动。OpenCode 不关心项目全局和记忆，只关心这个 brief 里的事。
 
-模型方面，OpenCode 用 DeepSeek Flash Free（每天有免费额度）。超出免费额度就切 DeepSeek Flash——二者是同一个模型，缓存命中率不受影响。
+模型方面，OpenClaw 调度 OpenCode 时使用它的 DeepSeek Flash Free 免费模型。每天有免费额度，超出后自动回退到 Flash 模型——二者是同一个模型，缓存命中率不受影响。而 OpenCode 本身使用的是 Go 套餐（按量付费）。
 
 这一改，当天 token 费用从 100+ 降到个位数。兄弟表示满意。
 
