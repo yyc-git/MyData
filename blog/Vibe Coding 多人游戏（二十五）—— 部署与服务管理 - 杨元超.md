@@ -230,7 +230,7 @@ const crypto = require('crypto');
 const https = require('https');
 
 // ---- 配置 ----
-const SECRET_ID = 'AKIDdL16e8c2KOWccglputqiU8cO5fMYlhcM';
+const SECRET_ID = 'AKIDxxx...xxx'; // 实际值已脱敏
 const SECRET_KEY = 'a1GJHNZntyxojls2Galt8FHSp5A1g8Ul';
 const REGION = 'ap-shanghai';
 const DESKTOP = path.join(os.homedir(), 'Desktop');
