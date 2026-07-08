@@ -26,7 +26,7 @@ basic1 帧同步 → new_basic2 状态同步 → 大重构 → 迭代开发 → 
    P6             P7                   P8         P9          P10
 ```
 
-### P6 帧同步（basic1 原型）— 2026年5月底
+### [P6](https://www.cnblogs.com/chaogex/p/21240098) 帧同步（basic1 原型）— 2026年5月底
 
 一切从这开始。basic1 是我自己手写的帧同步原型，通信层使用了 TSRPC（WebSocket）。方案很经典：服务端只做中继转发指令，所有客户端同步执行相同的逻辑，确保结果一致。
 
@@ -40,9 +40,9 @@ basic1 帧同步 → new_basic2 状态同步 → 大重构 → 迭代开发 → 
 
 2026年5月底到6月初，我在 basic1 上磨了一周。到后来我已经清楚——Lockstep 虽美，但手动维护所有同步细节实在太难。6月初我决定放弃 basic1，换了方向。
 
-**P6 会完整展开这个阶段的故事。**
+**[P6](https://www.cnblogs.com/chaogex/p/21240098) 会完整展开这个阶段的故事。**
 
-### P7 状态同步（new_basic2 原型）— 2026年6月上旬
+### [P7](https://www.cnblogs.com/chaogex/p/21240099) 状态同步（new_basic2 原型）— 2026年6月上旬
 
 basic1 的 TSRPC 通信层保留了下来，但同步模型要彻底换——从帧同步改为**服务端权威状态同步**：服务端统一算 tick，所有客户端只做渲染。
 
@@ -56,9 +56,9 @@ TSRPC 本身在这个阶段也踩了坑：**bigint 传不过去**。TSRPC 内部
 
 更关键的问题是——我对代码的控制权在快速下降。之前辅助编程时出现多次「AI 拍脑袋修 bug」的问题：我说位置不同步，AI 不加日志排查，而是直接在客户端加一行 `position = serverPosition`，掩盖了真正的根因。新阶段我决定换工具——**引入 OpenClaw**，让它作为我的人机接口，全面接管日常开发。这正是后续工作流进化的开端。
 
-**P7 会完整展开状态同步方案的设计和坑。**
+**[P7](https://www.cnblogs.com/chaogex/p/21240099) 会完整展开状态同步方案的设计和坑。**
 
-### P8 大重构（Monorepo + 双服务 + Logic 共享层）— 2026年6月8日-6月12日
+### [P8](https://www.cnblogs.com/chaogex/p/21240102) 大重构（Monorepo + 双服务 + Logic 共享层）— 2026年6月8日-6月12日
 
 状态同步 MVP 跑通后，代码处于可运行但不可维护的状态。`demos/new_basic2/` 目录里前端和逻辑搅在一起，服务端代码也是一团乱麻。
 
@@ -82,9 +82,9 @@ TSRPC 本身在这个阶段也踩了坑：**bigint 传不过去**。TSRPC 内部
 
 为了彻底解决不可维护的问题，我还引入了 ReScript 来重写 logic 包的逻辑层代码。ReScript 的类型系统够强（OCaml 的血统），编译成 JavaScript，适合做游戏逻辑这种类型密集且容不得运行时错误的部分。但 ReScript 又带来了一整条依赖链的问题，后来部署时差点被 @rescript/runtime 的 ESM 问题搞崩溃。这是后话。
 
-**P8 会详细展开这次大重构的全过程。**
+**[P8](https://www.cnblogs.com/chaogex/p/21240102) 会详细展开这次大重构的全过程。**
 
-### P9 迭代开发（Tick Loop + 碰撞检测 + 状态管理演进）— 2026年6月13日-6月29日
+### [P9](https://www.cnblogs.com/chaogex/p/21240105) 迭代开发（Tick Loop + 碰撞检测 + 状态管理演进）— 2026年6月13日-6月29日
 
 重构后的代码结构清晰了，可以真正进入产品迭代。
 
@@ -99,9 +99,9 @@ TSRPC 本身在这个阶段也踩了坑：**bigint 传不过去**。TSRPC 内部
 
 这个阶段最有意思的是 **OpenCode 的引入**。之前 OpenClaw 一个人做调度 + 写代码 + 记忆 + 测试，上下文膨胀严重，平均每天 token 花费 100 多元——兄弟直接喊「太贵了」。6月12日我们做了调度分离：OpenClaw 做调度层，写代码的任务交给专门的 OpenCode（用 DeepSeek Flash Free 模型，便宜）。这个改变让月费降了 **96%**。
 
-**P9 会展开迭代开发的具体流程和功能演进。**
+**[P9](https://www.cnblogs.com/chaogex/p/21240105) 会展开迭代开发的具体流程和功能演进。**
 
-### P10 SCF 部署 — 2026年6月30日
+### [P10](https://www.cnblogs.com/chaogex/p/21240107) SCF 部署 — 2026年6月30日
 
 写再多代码，不上线都是白搭。6月30日我们开始部署到腾讯云 SCF（Serverless Cloud Function）。
 
@@ -117,7 +117,7 @@ TSRPC 本身在这个阶段也踩了坑：**bigint 传不过去**。TSRPC 内部
 
 每个坑从发现到修复都经历了「症状 → 排查 → 根因 → 修复」的完整链路。最终我们写了一套自动化部署脚本 `deploy-scf.js`，纯 Node.js 零依赖，一行命令搞定打包 + 上传 + 配置 + BDD 验证。
 
-**P10 会完整展开这 6 个坑的逐坑故事。**
+**[P10](https://www.cnblogs.com/chaogex/p/21240107) 会完整展开这 6 个坑的逐坑故事。**
 
 ---
 
@@ -179,7 +179,7 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 - **E2E 自测 + 根因修复**：让 AI 自己复现 bug → 打日志定位 → 修复 → 验证。配合 Chromium CDP 实现 WebSocket 连接的验证
 - **Specs 体系**：先出规格再开工。Main Specs 概览，Delta Specs 讲清楚这次改动什么、不动什么。兄弟确认后再干活
 
-每一步的详细过程在 **P12-P16 工作流进化** 篇展开。
+每一步的详细过程在 **[P12](https://www.cnblogs.com/chaogex/p/21240111)-[P16](https://www.cnblogs.com/chaogex/p/21240118) 工作流进化** 篇展开。
 
 ### 测试体系进化：从零到三层的历程
 
@@ -194,11 +194,11 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 | OpenCode 引入后 | **E2E 自测**，Playwright CDP | AI 修 bug 不看日志，拍脑袋修 | 一个 bug 修了 7 轮没修好 |
 | Skill 固化后 | **自动化验收**，gts-acceptance | 流程太长，人忘了某步 | 部署前忘记重启 room，WS 断连 |
 
-每个阶段的测试故事分别在相应篇中展开：P9 讲 BDD 在迭代中建立，P14 讲 E2E 自测的引入，P21 讲完整的测试策略体系。
+每个阶段的测试故事分别在相应篇中展开：[P9](https://www.cnblogs.com/chaogex/p/21240105) 讲 BDD 在迭代中建立，[P14](https://www.cnblogs.com/chaogex/p/21240273) 讲 E2E 自测的引入，[P21](https://www.cnblogs.com/chaogex/p/21240127) 讲完整的测试策略体系。
 
 ---
 
-## 知识管理速览（P17-P29，13 个主题）
+## 知识管理速览（[P17](https://www.cnblogs.com/chaogex/p/21240119)-[P29](https://www.cnblogs.com/chaogex/p/21240280)，13 个主题）
 
 | 主题 | 一句话说清 |
 |------|-----------|
@@ -251,11 +251,11 @@ OpenClaw 的本质是「一个能自己用工具干活的 AI」。我不再写�
 
 ## 后续每篇的推荐阅读顺序
 
-- **想了解全貌：** P5（这篇）→ 挑感兴趣的时间线篇 → 挑感兴趣的知识篇
-- **想上手实操：** P5 → P30 起步指南 → P12-P16 工作流 → P21 测试 → P22 Token → P17 规则
-- **想避坑：** P5 → P10 部署 → P29 反模式 → P18 重构标准
+- **想了解全貌：** [P5](https://www.cnblogs.com/chaogex/p/21240096)（这篇）→ 挑感兴趣的时间线篇 → 挑感兴趣的知识篇
+- **想上手实操：** P5 → [P30](https://www.cnblogs.com/chaogex/p/21240282) 起步指南 → P12-P16 工作流 → [P21](https://www.cnblogs.com/chaogex/p/21240127) 测试 → [P22](https://www.cnblogs.com/chaogex/p/21240129) Token → [P17](https://www.cnblogs.com/chaogex/p/21240119) 规则
+- **想避坑：** P5 → [P10](https://www.cnblogs.com/chaogex/p/21240107) 部署 → [P29](https://www.cnblogs.com/chaogex/p/21240280) 反模式 → [P18](https://www.cnblogs.com/chaogex/p/21240120) 重构标准
 - **时间线通读：** P5 → P6 → P7 → P8 → P9 → P10
-- **想了解 AI 协作方法论：** P5 → P12 → P13 → P14 → P15 → P16 → P17 → P19 → P22 → P23 → P29
+- **想了解 AI 协作方法论：** P5 → [P12](https://www.cnblogs.com/chaogex/p/21240111) → [P13](https://www.cnblogs.com/chaogex/p/21240272) → [P14](https://www.cnblogs.com/chaogex/p/21240273) → [P15](https://www.cnblogs.com/chaogex/p/21240114) → [P16](https://www.cnblogs.com/chaogex/p/21240118) → [P17](https://www.cnblogs.com/chaogex/p/21240119) → [P19](https://www.cnblogs.com/chaogex/p/21240123) → [P22](https://www.cnblogs.com/chaogex/p/21240129) → [P23](https://www.cnblogs.com/chaogex/p/21240131) → [P29](https://www.cnblogs.com/chaogex/p/21240280)
 
 ---
 
