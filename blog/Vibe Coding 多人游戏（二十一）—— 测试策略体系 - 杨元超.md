@@ -266,6 +266,8 @@ expect(gameState.isPlaying).toBe(true)
 
 状态断言比截图可靠得多，而且运行时开销更小。
 
+不过截图对比也并非完全没用——当分析 AI 的操作结果时（比如 OpenCode 改完代码，要看界面变化），截图仍然是传达视觉信息的最直接方式。截图对比的不可靠性促成了另一个方向的 Skill——**截图分析优化**（`gts-screenshot-optimize`）：截图自动降质到 800px 宽、70% quality 节省 token，必要时截局部而非全屏，关键分析调度 OpenCode Pro + Kimi K2.7 Code 多模态模型来解读
+
 
 ## 测试的 AI 适配
 
