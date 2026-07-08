@@ -6,13 +6,13 @@
 
 ---
 
-OpenClaw 是一个 AI 网关/代理平台，GTS-Play 用它做开发流程的调度层。全套工具链包含 16 个 Skill。
+OpenClaw 是一个 AI 网关/代理平台，GTS-Play 用它做开发流程的调度层。全套工具链目前包含 23 个 Skill。
 
-为什么需要 16 个 Skill？因为每个开发阶段——分析、编码、测试、部署、记忆、通知——都有专门的自动化流程。刚开始只有 3-4 个 Skill，很快就发现不够：AI 在"修 bug"时可能还需要"查日志"、"跑测试"、"保存记忆"，每个都是单独的 Skill。16 个 Skill 是一个月逐步积累的结果，每个 Skill 对应一个具体的开发动作。
+为什么需要这么多 Skill？因为每个开发阶段——分析、编码、测试、部署、记忆、通知——都有专门的自动化流程。刚开始只有 3-4 个 Skill，很快就发现不够：AI 在"修 bug"时可能还需要"查日志"、"跑测试"、"保存记忆"，每个都是单独的 Skill。Skill 数量从6月下旬的16个，随着内容生产、搜索等新需求持续增长到现在的23个，每个 Skill 对应一个具体的开发动作。
 
 ---
 
-## 22 个 Skill 全家桶
+## 23 个 Skill 全家桶
 
 **开发类：**
 
@@ -69,6 +69,8 @@ OpenClaw 是一个 AI 网关/代理平台，GTS-Play 用它做开发流程的调
 | gts-analysis | 分析需求/方案，输出报告 |
 | gts-code-review | 代码审查（调度 OpenCode 审） |
 | gts-recall | 查记忆+近对话，分析工作进展 |
+| gts-stop | 紧急停止一切操作，清理残留进程 |
+| gts-conversation-end | 清理服务/定时器，结束对话 |
 
 `gts-recall` 是最"软"的 Skill。它不生成代码、不跑测试——只查记忆、查近期的对话记录，然后给一个"工作简报"：过去几天做了什么、有哪些进展、下一步建议。对于长期项目的回顾特别有用，尤其是兄弟隔了一周没开发，回来不知道从哪继续。
 
@@ -441,7 +443,7 @@ description: "兄弟说「e2e测试」时触发。手动双窗口，列出可选
 
 **前置检查 — 前端服务：**
 1. 检查 webpack-dev-server 是否在运行：`Get-Process -Name node | Where-Object { $_.CommandLine -match 'webpack' }`
-2. 如未运行 → `cd D:\Github\GTS-Play\packages\frontend && yarn webpack:dev-server` 启动，等启动完成
+2. 如未运行 → `cd <project>\packages\frontend && yarn webpack:dev-server` 启动，等启动完成
 3. 如已运行 → 跳过，保留现有 webpack 进程
 
 **重启核心服务：**
@@ -663,12 +665,12 @@ description: "部署GTS-Play服务（room1/room2/match1/frontend/all）到SCF或
 - 本地 E2E 测试通过后自动触发（不需要确认）
 
 ## 前置条件
-- 工作目录：`D:\Github\GTS-Play\packages\meta3d-platform-publish`
+- 工作目录：`<project>\packages\meta3d-platform-publish`
 - 部署到腾讯云 SCF（服务端）或 CloudBase 静态托管（前端）
 - 生产 URL：
-  - room1: `wss://1302358347-75c0pmliik.ap-shanghai.tencentscf.com?room-id=1`
-  - room2: `wss://1302358347-ezkijqoed2.ap-shanghai.tencentscf.com?room-id=2`
-  - match: `https://1302358347-392p0efafm.ap-shanghai.tencentscf.com`
+  - room1: `wss://<appid>-<room1>.ap-shanghai.tencentscf.com?room-id=1`
+  - room2: `wss://<appid>-<room2>.ap-shanghai.tencentscf.com?room-id=2`
+  - match: `https://<appid>-<match>.ap-shanghai.tencentscf.com`
 
 ## 🔴 规则
 
@@ -793,9 +795,9 @@ description: "抓取并分析GTS-Play SCF服务端日志（room1/room2/match1）
 - `logs`
 
 ## 前置条件
-- 工作目录：`D:\Github\GTS-Play\packages\meta3d-platform-publish`
+- 工作目录：`<project>\packages\meta3d-platform-publish`
 - 日志来源：腾讯云 CLS（日志服务），通过 `logs-scf.js` 脚本查询
-- 三个服务共用同一个 CLS 日志主题：`806996fb-c4fc-4de3-8fc6-41c0cdab83f2`
+- 三个服务共用同一个 CLS 日志主题：`YOUR_CLS_TOPIC_ID`
 
 ## 流程
 
@@ -859,8 +861,8 @@ node scripts/logs-scf.js room1 --limit 50 --hours 2
 
 ## 参考
 - 日志脚本：`packages/meta3d-platform-publish/scripts/logs-scf.js`
-- CLS 日志主题 ID: `806996fb-c4fc-4de3-8fc6-41c0cdab83f2`
-- 日志集 ID: `f55dcb46-e178-4ecb-8443-3ad42d323040`
+- CLS 日志主题 ID: `YOUR_CLS_TOPIC_ID`
+- 日志集 ID: `YOUR_CLS_LOG_SET_ID`
 
 ```
 
@@ -954,7 +956,7 @@ description: "兄弟说「保存」时触发。审核→BDD→编译→规格→
 #### Part 0：提交并推送 GTS-Play 项目代码（在项目根目录执行）
 
 ```powershell
-Set-Location D:\Github\GTS-Play
+Set-Location <project>
 git add -A
 git commit -m "feat|fix|refactor: <改动摘要>"
 git push origin dev
@@ -969,7 +971,7 @@ git push origin dev
 **⚠️ 顺序不可错：先写 `.last-save`，再 `git add`，确保包含在 commit 中。**
 
 ```powershell
-Set-Location C:\Users\Administrator\.openclaw
+Set-Location <openclaw-home>
 
 # 1. 获取当前 HEAD SHA
 $SHA = git rev-parse HEAD
@@ -987,7 +989,7 @@ git commit -m "save: <日期> <改动摘要>"
 #### Part 2：push 到 GitHub
 
 ```powershell
-Set-Location C:\Users\Administrator\.openclaw
+Set-Location <openclaw-home>
 git push origin main
 ```
 
@@ -1056,15 +1058,15 @@ description: "代码审核：调度OpenCode Pro审查代码+测试脚本，转�
 在审核代码前，先检查本次改动的相关记忆和笔记是否需要同步更新：
 
 1. **检查 daily log**：查看 `~/.openclaw/workspace/memory/<当天>-log.md`，确认是否有本次改动的记录。如果审核涉及新的经验/教训/决策，在 daily log 末尾追加。
-2. **检查项目笔记**：查看 `D:\Github\GTS-Play\笔记\项目文档\changes\<活跃变更>` 下的 `log.md` 和 `solution.md`，确认是否需要更新改动描述、根因分析、修复方案。
+2. **检查项目笔记**：查看 `<project>\笔记\项目文档\changes\<活跃变更>` 下的 `log.md` 和 `solution.md`，确认是否需要更新改动描述、根因分析、修复方案。
 3. **检查 lessons 目录**：如果本次发掘了新的踩坑经验/重要教训，确认 `笔记/项目文档/lessons/` 下是否有对应的总结笔记需要更新。
 4. **列出需要更新的记忆/笔记列表**（不自己改，等兄弟确认）。
 
 > 不要遍历所有笔记，只查：
 > - `~/.openclaw/workspace/memory/<当天>-log.md`
-> - `D:\Github\GTS-Play\笔记\项目文档\changes/<活跃变更>/log.md`（如有）
-> - `D:\Github\GTS-Play\笔记\项目文档\changes/<活跃变更>/solution.md`（如有）
-> - `D:\Github\GTS-Play\笔记\项目文档\lessons/`（扫一眼，有匹配的才更新）
+> - `<project>\笔记\项目文档\changes/<活跃变更>/log.md`（如有）
+> - `<project>\笔记\项目文档\changes/<活跃变更>/solution.md`（如有）
+> - `<project>\笔记\项目文档\lessons/`（扫一眼，有匹配的才更新）
 
 ### Step 3：审核 Specs 规格文件
 
@@ -1097,7 +1099,7 @@ description: "代码审核：调度OpenCode Pro审查代码+测试脚本，转�
 write <审核brief> → .opencode-brief-review.md
 
 # 2. 调度（模板见 skills/opencode-schedule/SKILL.md）
-cd D:\Github\GTS-Play
+cd <project>
 exec(background=true, timeout=0) → type .opencode-brief-review.md | opencode run -m opencode-go/deepseek-v4-pro --variant max --dir . --attach http://localhost:4096 --no-replay
 ```
 通过 web UI（localhost:4096）监控审核进度。
@@ -1239,7 +1241,7 @@ exec(background=true, timeout=0) → type .opencode-brief-review.md | opencode r
    - 修复的文件和主要内容
    - 新的经验/教训/决策（如果有的话）
 
-2. **更新项目笔记**：`D:\Github\GTS-Play\笔记\项目文档\changes\<活跃变更>\log.md` 追加本次审核记录：
+2. **更新项目笔记**：`<project>\笔记\项目文档\changes\<活跃变更>\log.md` 追加本次审核记录：
    - 审核结论
    - 修复摘要
    - 测试结果（BDD + tsc）
@@ -1259,7 +1261,7 @@ exec(background=true, timeout=0) → type .opencode-brief-review.md | opencode r
 write <fix brief> → .opencode-brief-fix.md
 
 # 2. 调度
-cd D:\Github\GTS-Play
+cd <project>
 exec(background=true, timeout=0) → type .opencode-brief-fix.md | opencode run -m opencode-go/deepseek-v4-flash --dir . --attach http://localhost:4096 --no-replay
 ```
 

@@ -332,4 +332,8 @@ AI Coding 的未来不是写更好的 Prompt，而是设计更好的 Loop。而�
 
 ---
 
-**系列上一篇 → [（三十）给下一个 Vibe Coder 的起步指南](https://www.cnblogs.com/chaogex/p/21195307)**
+**系列完结** 🎉
+
+本系列共 32 篇文章，从 5 月到 7 月，记录了 GTS-Play 从帧同步到状态同步、从手动流程到全自动 Skill 体系、从单机到多人部署的完整过程。
+
+**系列入口 → [（零）目录](https://www.cnblogs.com/chaogex/p/21195307)****

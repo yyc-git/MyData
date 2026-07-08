@@ -524,7 +524,7 @@ description: "抓取并分析GTS-Play SCF服务端日志（room1/room2/match1）
 - `logs`
 
 ## 前置条件
-- 工作目录：`D:\Github\GTS-Play\packages\meta3d-platform-publish`
+- 工作目录：`<project>/packages\meta3d-platform-publish`
 - 日志来源：腾讯云 CLS（日志服务），通过 `logs-scf.js` 脚本查询
 - 三个服务共用同一个 CLS 日志主题：`806996fb-c4fc-4de3-8fc6-41c0cdab83f2`
 

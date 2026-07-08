@@ -103,7 +103,7 @@ Skill 不是普通的文档。普通的 `deploy.md` 15 步部署指南，人读�
 9. BDD 测试全部通过 → 完成
 ```
 
-第三行"查看最近的运行日志"是关键——一般的 AI 代码修复只读代码不看日志，但很多 bug 从代码上是看不出来的，必须结合运行时日志。比如我们遇到的一个 `ApiFinished` 守卫问题：`Object.keys(state.serverState.players).length > 0` 这个条件，在 `players` 是 `Immutable.Map()` 的时候永远返回 true（因为 `Object.keys(Map())` 返回 5 个内部属性 `size`、`_root`、`__ownerID`、`__hash`、`__altered`），这个从代码上看不出来，但从日志里一眼就能发现——`_handleFinished` 从未执行。
+第三行"查看最近的运行日志"是关键——一般的 AI 代码修复只读代码不看日志，但很多 bug 从代码上是看不出来的，必须结合运行时日志。比如我们遇到的一个 `ApiFinished` 守卫问题：`Object.keys(state.serverState.players).length > 0` 这个条件，在 `players` 是 `Immutable.Map()` 的时候永远返回 false——`Object.keys(Immutable.Map())` 返回空数组 `[]`，即使 Map 里实际上存了玩家数据，length 也是 0。这个从代码上看不出来，但从日志里一眼就能发现——`_handleFinished` 从未执行。
 
 **这个 Skill 固化有什么好处？** 最大的好处是：菜鸟和老手效果一样差——不，菜鸟和老手效果一样好。因为流程是写死的，AI 按照流程走，不会跳过关键步骤。
 

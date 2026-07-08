@@ -223,7 +223,7 @@ if (currentGen !== countdownGen) {
 
 OBB（Oriented Bounding Box）碰撞模型数据是客户端调试渲染用的——但它被错误地放进了网络协议。每次命令携带 15-20KB 的 obbArray 数据，广播给其他玩家时又是 20-50KB × 10-30fps。结果：
 - V8 GC 频繁触发
-- GPU 驱动由于数据处理不过来产生 TDR（Timeout Detection & Recovery）
+- GPU 驱动由于数据处理不过来产生 TDR（Timeout Detection & Recovery，超时检测与恢复 & Recovery）
 - Chrome 崩溃重启
 
 修复方式：
