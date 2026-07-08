@@ -43,72 +43,72 @@ WebGPU/多线程调研（P11）
 
 | # | 标题 | 一句话 |
 |---|------|--------|
-| 1 | Pieter Levels 一个人的游戏帝国 | 一个人 + AI，3 天上线多人游戏，17 天做到 100 万美金 ARR |
-| 2 | Vibe Jam 2026 技术地图 | 80% 的获奖作品是多人游戏，Three.js + WebSocket 是标准答案 |
-| 3 | AI 做多人游戏的实操方法论 | 从 FPS 完整复盘总结出 5 阶段标准化流程 |
-| 4 | 从 levelsio 到 GTS-Play — 能抄什么 | 回到自己的项目，对比差异，列出 6 件可以直接抄的事 |
+| 1 | [Pieter Levels 一个人的游戏帝国](https://www.cnblogs.com/chaogex/p/21156138) | 一个人 + AI，3 天上线多人游戏，17 天做到 100 万美金 ARR |
+| 2 | [Vibe Jam 2026 技术地图](https://www.cnblogs.com/chaogex/p/21156140) | 80% 的获奖作品是多人游戏，Three.js + WebSocket 是标准答案 |
+| 3 | [AI 做多人游戏的实操方法论](https://www.cnblogs.com/chaogex/p/21156141) | 从 FPS 完整复盘总结出 5 阶段标准化流程 |
+| 4 | [从 levelsio 到 GTS-Play — 能抄什么](https://www.cnblogs.com/chaogex/p/21240095) | 回到自己的项目，对比差异，列出 6 件可以直接抄的事 |
 
 ## 实战总览（P5）
 
 | # | 标题 | 字数 | 一句话 |
 |---|------|------|--------|
-| 5 | 实战总览：从 0 到 1 的时间线地图 | 500-5000 | 一张图看完整个系列 5 个阶段 + 工作流进化 + 知识管理 |
+| 5 | [实战总览：从 0 到 1 的时间线地图](https://www.cnblogs.com/chaogex/p/21240096) | 500-5000 | 一张图看完整个系列 5 个阶段 + 工作流进化 + 知识管理 |
 
 ## 时间线（P6-P10）
 
 | # | 阶段 | 标题 | 字数 | 一句话 |
 |---|------|------|------|--------|
-| 6 | Phase 1 | basic1 帧同步（Lockstep） | 500-5000 | 第一个多人原型，Lockstep + 浮点数噩梦 |
-| 7 | Phase 2 | 切换到状态同步 + TSRPC | 500-5000 | 为什么放弃帧同步，服务端权威模型建立 |
-| 8 | **大重构** | **Monorepo + 双服务 + Logic + 开闭原则** | 500-5000 | 一天完成全部架构重构，四包结构定型 |
-| 9 | **迭代开发** | **Tick Loop + 碰撞检测 + 状态管理演进** | 500-5000 | 两周迭代：从原型到可玩的联机游戏 |
-| 10 | Phase 8 | SCF 部署 6 连环坑 | 500-5000 | undici@7、zip、权限、ESM、hook、warm container |
+| 6 | Phase 1 | [basic1 帧同步（Lockstep）](https://www.cnblogs.com/chaogex/p/21240098) | 500-5000 | 第一个多人原型，Lockstep + 浮点数噩梦 |
+| 7 | Phase 2 | [切换到状态同步 + TSRPC](https://www.cnblogs.com/chaogex/p/21240099) | 500-5000 | 为什么放弃帧同步，服务端权威模型建立 |
+| 8 | **大重构** | **[Monorepo + 双服务 + Logic + 开闭原则](https://www.cnblogs.com/chaogex/p/21240102)** | 500-5000 | 一天完成全部架构重构，四包结构定型 |
+| 9 | **迭代开发** | **[Tick Loop + 碰撞检测 + 状态管理演进](https://www.cnblogs.com/chaogex/p/21240105)** | 500-5000 | 两周迭代：从原型到可玩的联机游戏 |
+| 10 | Phase 8 | [SCF 部署 6 连环坑](https://www.cnblogs.com/chaogex/p/21240107) | 500-5000 | undici@7、zip、权限、ESM、hook、warm container |
 
 ## WebGPU/多线程调研（P11）
 
 | # | 标题 | 字数 | 一句话 |
 |---|------|------|--------|
-| 11 | WebGPU/多线程调研与架构就绪 | 500-5000 | SOA、IRenderer、SAB 三线程架构，为未来铺路 |
+| 11 | [WebGPU/多线程调研与架构就绪](https://www.cnblogs.com/chaogex/p/21240110) | 500-5000 | SOA、IRenderer、SAB 三线程架构，为未来铺路 |
 
 ## 工作流进化（P12-P16）
 
 | # | 标题 | 字数 | 一句话 |
 |---|------|------|--------|
-| 12 | AI 辅助编程 → OpenClaw → OpenCode 引入 | 500-5000 | 从网页版 DeepSeek 到全自动化，费用从日均 100+ 到零 |
-| 13 | OpenClaw 调度 + Skill 固化 + 自动部署 | 500-5000 | 三角色分工，流程化，CI 闭环 |
-| 14 | E2E 自测与根因修复 | 500-5000 | 三天一个最难同步 Bug，让 AI 自测自修 |
-| 15 | 完整 Vibe Coding 工作流全景 | 500-5000 | 总图：兄弟→OpenClaw→OpenCode→AI→验收→提交 |
-| 16 | Vibe Coding 经验和教训合集 | 500-5000 | 测试金字塔、Skill 化价值、全体协作坑 |
+| 12 | [AI 辅助编程 → OpenClaw → OpenCode 引入](https://www.cnblogs.com/chaogex/p/21240111) | 500-5000 | 从网页版 DeepSeek 到全自动化，费用从日均 100+ 到零 |
+| 13 | [OpenClaw 调度 + Skill 固化 + 自动部署](https://www.cnblogs.com/chaogex/p/21240272) | 500-5000 | 三角色分工，流程化，CI 闭环 |
+| 14 | [E2E 自测与根因修复](https://www.cnblogs.com/chaogex/p/21240273) | 500-5000 | 三天一个最难同步 Bug，让 AI 自测自修 |
+| 15 | [完整 Vibe Coding 工作流全景](https://www.cnblogs.com/chaogex/p/21240114) | 500-5000 | 总图：兄弟→OpenClaw→OpenCode→AI→验收→提交 |
+| 16 | [Vibe Coding 经验和教训合集](https://www.cnblogs.com/chaogex/p/21240118) | 500-5000 | 测试金字塔、Skill 化价值、全体协作坑 |
 
 ## 知识管理（P17-P29）
 
 | # | 标题 | 字数 | 一句话 |
 |---|------|------|--------|
-| 17 | 三层编码规则体系 + agent-context.md | 500-5000 | 基础/模块/流程三层，"宪法"自动注入每个 brief |
-| 18 | 重构标准 🐛🔴🟡🟢 逐条拆解 | 500-5000 | 最高频 bug：End 逻辑重置 |
-| 19 | Specs、变更管理与方案体系 | 500-5000 | Main Specs + Delta Specs + 讨论→方案→实施 SOP |
-| 20 | 决策记录精要 | 500-5000 | 40+ ADR 精选，还有反面决策 |
-| 21 | 测试策略体系 | 500-5000 | 三层测试 + E2E 积木化 + 验收 5 步 |
-| 22 | Token 优化全攻略 | 500-5000 | 月费 3000→几百的实操方案 |
-| 23 | 记忆管理体系 | 500-5000 | QMD 5 collections，33 锚点词，检索协议 |
-| 24 | Agent Brief 与 OpenCode 调度规范 | 500-5000 | 体验式反馈 > 技术 spec |
-| 25 | 部署与服务管理 | 500-5000 | deploy-scf.js，双环境双实例，SCF 配置 |
-| 26 | OpenClaw 工具链全景 | 500-5000 | 23 个 Skill 全家桶，通知通道，入口检查协议 |
-| 27 | 前端性能优化 + AI 素材管线 | 500-8000 | SoA + GC 优化、帧管理 + 插值、双轨动画、AI 素材 + WebGPU 就绪 |
-| 28 | 通信可靠性与错误处理模式 | 500-5000 | WS 断连、重连、竞态、防御式编程 |
-| 29 | 教训、反模式与设计模式 | 500-5000 | 6 类坑 root cause + 17 个可复用模式 |
+| 17 | [三层编码规则体系 + agent-context.md](https://www.cnblogs.com/chaogex/p/21240119) | 500-5000 | 基础/模块/流程三层，"宪法"自动注入每个 brief |
+| 18 | [重构标准 🐛🔴🟡🟢 逐条拆解](https://www.cnblogs.com/chaogex/p/21240120) | 500-5000 | 最高频 bug：End 逻辑重置 |
+| 19 | [Specs、变更管理与方案体系](https://www.cnblogs.com/chaogex/p/21240123) | 500-5000 | Main Specs + Delta Specs + 讨论→方案→实施 SOP |
+| 20 | [决策记录精要](https://www.cnblogs.com/chaogex/p/21240126) | 500-5000 | 40+ ADR 精选，还有反面决策 |
+| 21 | [测试策略体系](https://www.cnblogs.com/chaogex/p/21240127) | 500-5000 | 三层测试 + E2E 积木化 + 验收 5 步 |
+| 22 | [Token 优化全攻略](https://www.cnblogs.com/chaogex/p/21240129) | 500-5000 | 月费 3000→几百的实操方案 |
+| 23 | [记忆管理体系](https://www.cnblogs.com/chaogex/p/21240131) | 500-5000 | QMD 5 collections，33 锚点词，检索协议 |
+| 24 | [Agent Brief 与 OpenCode 调度规范](https://www.cnblogs.com/chaogex/p/21240134) | 500-5000 | 体验式反馈 > 技术 spec |
+| 25 | [部署与服务管理](https://www.cnblogs.com/chaogex/p/21240135) | 500-5000 | deploy-scf.js，双环境双实例，SCF 配置 |
+| 26 | [OpenClaw 工具链全景](https://www.cnblogs.com/chaogex/p/21240136) | 500-5000 | 23 个 Skill 全家桶，通知通道，入口检查协议 |
+| 27 | [前端性能优化 + AI 素材管线](https://www.cnblogs.com/chaogex/p/21240276) | 500-8000 | SoA + GC 优化、帧管理 + 插值、双轨动画、AI 素材 + WebGPU 就绪 |
+| 28 | [通信可靠性与错误处理模式](https://www.cnblogs.com/chaogex/p/21240279) | 500-5000 | WS 断连、重连、竞态、防御式编程 |
+| 29 | [教训、反模式与设计模式](https://www.cnblogs.com/chaogex/p/21240280) | 500-5000 | 6 类坑 root cause + 17 个可复用模式 |
 
 ## 总结（P30）
 
 | # | 标题 | 字数 | 一句话 |
 |---|------|------|--------|
-| 30 | 给下一个 Vibe Coder 的起步指南 | 500-5000 | 最佳路径、技术栈推荐、从 builder 到 conductor |
+| 30 | [给下一个 Vibe Coder 的起步指南](https://www.cnblogs.com/chaogex/p/21240282) | 500-5000 | 最佳路径、技术栈推荐、从 builder 到 conductor |
 
 ## 新视角（P31）
 
 | # | 标题 | 字数 | 一句话 |
 |---|------|------|--------|
-| 31 | Loop Engineering：我们的实践与改进方向 | 500-5000 | 用 Loop Engineering 框架照镜子，看我们走到哪、差距在哪、下一步怎么走 |
+| 31 | [Loop Engineering：我们的实践与改进方向](https://www.cnblogs.com/chaogex/p/21240284) | 500-5000 | 用 Loop Engineering 框架照镜子，看我们走到哪、差距在哪、下一步怎么走 |
 
 ---
 
