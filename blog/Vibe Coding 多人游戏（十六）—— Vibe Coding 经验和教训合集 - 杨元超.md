@@ -22,7 +22,7 @@
    /集成 \
   /测试   \        ← BDD + Cucumber，不 mock
  /______\
-/ 单元测试\       ← Jest，AI 自动写、自动跑
+/ 单元测试\       ← BDD Features（.feature \+ steps），AI 自动写、自动跑
 /________\
 ```
 
@@ -89,7 +89,40 @@ Skill 和文档不一样的地方在于：
 
 如果我现在招一个人来做 GTS-Play，我会让他先跑一遍 BDD 测试。测试全绿意味着环境配置好了，代码可以正常编译运行。测试里的场景就是他了解系统全部流程的入口。
 
-GTS-Play 的 BDD 测试从最初的 3 个场景增长到 7 个。7 个不算多，但每个都对应一个真实踩过的坑：ESM 模块加载问题、SCF 部署后 API 不可达、WebSocket 连接问题……测试列表就是系统踩坑史。
+GTS-Play 的 BDD 测试结构分为三层：
+
+**前端集成测试（9 个 features）**：
+
+```
+packages/frontend/test/features/integration/
+├── camera-orbitcontrols.feature       ← 相机轨道控制
+├── camera-position.feature            ← 相机位置同步
+├── game-end-reset-integration.feature ← 游戏结束重置
+├── gamestate-fix-integration.feature   ← GameState 修复
+├── multiplayer-error-handling.feature ← 多人错误处理
+├── obb-integration.feature            ← OBB 碰撞检测
+├── reentry-hud.feature                ← HUD 场景重入
+├── room-kick-ready.feature            ← 踢人和准备
+└── victory-modal-display.feature      ← 胜利弹窗
+```
+
+**服务端集成测试（18+ 个 features）**：
+
+```
+packages/room-service/test/features/    ← 13 个
+├── game.feature / game-end-reset.feature / game-over.feature / game-reset.feature
+├── game-state-perf.feature / game-timeout.feature
+├── player-ready.feature / player-ready-flow.feature / player-ready-set.feature
+├── player-defeated.feature / kick-player.feature / member-exit.feature
+├── host-transfer.feature / clear-room.feature / zombie-timer.feature
+
+packages/match-service/test/features/   ← 5 个
+├── find-room.feature / empty-room-cleanup.feature
+├── health-check.feature / room-admin.feature
+└── room-list-fault-tolerance.feature
+```
+
+每个 feature 都不是凭空造的——每个都对应一个真实踩过的坑：ESM 模块加载问题、SCF 部署后 API 不可达、WebSocket 断连重连、僵尸房间清理、Host Transfer 竞态条件……测试列表就是系统的踩坑史。
 
 ---
 
@@ -138,19 +171,36 @@ GTS-Play 的 BDD 测试从最初的 3 个场景增长到 7 个。7 个不算多�
 
 ---
 
-## 教训 2：别让 AI 改 node_modules——这是血泪教训
+## 教训 2：别让 AI 改 node_modules——但有个特例
 
 追了一个月的 bug——不是 AI 改 node_modules 本身的问题，而是 AI 反复陷入 node_modules 的死循环。
 
 故事是这样的：某个版本的 `@rescript/runtime` 和我们项目的类型定义不匹配。AI 每次编译报错，不看 `tsconfig.json` 的配置，而是直接去改 `node_modules/@rescript/runtime/package.json`。然后把 `"type": "module"` 改成 `"type": "commonjs"`——看起来好了，编译通过了。但下次 `yarn install` 后 node_modules 重置，又报错。AI 又去改 node_modules。循环了 3 次。
 
-正确的做法是在 `tsconfig.json` 的 `exclude` 里加上 `../../logic/src/**/*.gen.tsx`，或者不复制该 package.json 到部署 zip。
+但这里有个更本质的问题：为什么 AI 需要改 node_modules？因为这是一个 **monorepo**。
 
-**原则：改 `.ts` 再 `tsc`，改 `.res` 再 `rescript build`。不改 `.js`，不改 `.json`（除非项目文件），永远不改 `node_modules`。**
+Monorepo 下，当某个 package 的依赖不匹配时，正确的流程不是修改 `node_modules`，而是改 **根目录的 `package.json`**，然后在项目根目录执行 `yarn bootstrap`（等同于 `yarn install`），让 Lerna 重新链接依赖。
 
-现在这个红线写进了所有 Skill 的 Brief 模板里，AI 默认不碰 node_modules。
+比如遇到 peer dependency 版本冲突：
+
+```
+❌ AI 的做法：
+  直接改 packages/room-service/node_modules/xxx/package.json 里的版本号
+  → 下次 yarn install 重置，又报错
+  → AI 又去改，无限循环
+
+✅ 正确的做法：
+  改根目录 package.json 的 resolutions 或 devDependencies
+  → 执行 yarn bootstrap 重新安装
+  → 所有 package 的 node_modules 同步更新
+```
+
+AI 不理解 "monorepo 的依赖管理是全局的"——它看到的是单个 package.json，不知道改了根目录才管用。
+
+**原则：依赖问题改根 package.json → yarn bootstrap，不改 node_modules。**
 
 ---
+
 
 ## 教训 3：E2E 前必须重启服务——状态残留的幽灵
 
@@ -186,6 +236,75 @@ GTS-Play 的 BDD 测试从最初的 3 个场景增长到 7 个。7 个不算多�
 > **MEMORY.md #30**：跨文件重构/大规模读代码用 sessions_spawn 拆。
 
 有了这两个规则后，再也没有 context overflow 的问题了。
+
+---
+
+## 经验 5：Goal 量化比模型选择更重要
+
+```
+问题：帮我修复支付系统的并发问题
+→ AI 修了 15 轮还没完，因为每次修完都引入新 bug
+→ 没有完成标准：通过单测就算修好了？性能不退步？安全无漏洞？
+
+问题：确保测试全部通过，latency_p99 < 100ms，无新增 lint error
+→ AI 跑了 3 轮就收敛了，因为明确了什么时候该停
+```
+
+一个血淋淋的教训：自然语言 Goal 让 AI 反复改同一个逻辑。
+
+有段时间，我让 AI 修一个多人联机的同步 bug，说的是"修复玩家移动时位置不同步"。AI 修了一轮，单测过了，它说"修复完成"。但我玩游戏发现位置还是跳。于是我改成：
+
+```
+目标：玩家移动时位置误差 < 0.1 单位
+完成标准：
+- 集成测试 3 个场景全通过（直线、转弯、停止）
+- 移动插值 60fps 不卡顿
+- 无新增 tsc 编译警告
+```
+
+AI 只用了 2 轮就达到了。
+
+**原则：Brief 必须包含量化的完成标准，否则 AI 永远不知道什么时候该停。**
+
+## 经验 6：状态外置 > 对话历史
+
+```
+对话历史：AI 记得 "上次我修过了那个 bug"
+→ 上下文溢出后忘了 → 重头开始修
+
+仓库状态：MEMORY.md 里有 ADR 记录，锚点词能搜到
+→ 新对话也能找到 → 复用上次的修复逻辑
+```
+
+"Agent 会忘，仓库不会忘"——这是经过多次惨痛教训后才真正内化的原则。
+
+最开始的记忆都在对话上下文里。AI 说"我记得"，我也信了。直到某次 context overflow 后，AI 完全忘了前 3 次修复都修了什么，重新开始分析，浪费时间。
+
+现在所有关键信息都外置到仓库：
+
+- 决策记录 → 笔记/决策记录/
+- 项目知识 → MEMORY.md + memory/*
+- 每日日志 → 笔记/daily/
+- 技术方案 → 笔记/方案/
+- 项目文档 → 笔记/项目文档/
+
+AI 每次启动新对话后，第一件事就是搜索锚点词，从仓库里读取记忆。而不是依赖"我记得上次我做了什么"。
+
+**原则：不要让 AI 在对话上下文里记东西——把它写进仓库。**
+
+## 教训 5：Maker/Checker 同模型的隐患
+
+这是最新的一个发现。我们的 Maker 和 Checker 都是 DeepSeek Flash——同一个模型。
+
+结果是什么？AI 修完 bug 说"测试全通过，完成"。我自己跑了一次游戏，发现 HUD 还是有问题。但 AI 的 check 过程里明明测了那个场景。
+
+后来发现原因：Checker 和 Maker 用的是同一模型，Checker 默认信任 Maker 的实现，不会深挖。如果 Checker 看到测试签名、断言逻辑和 Maker 修的一致，就认为"没问题"——但两个可能同时忽略了同一个边界情况。
+
+**正确的做法是 maker 和 checker 用不同模型。** 比如 Maker 用 DeepSeek Flash（快、便宜、够用），Checker 用更强的模型（比如 DeepSeek Pro 或 Claude）来真正审视 Maker 的输出。
+
+这听起来奢侈，但其实只在关键节点用强模型做 check，总体 token 增量不超过 10%。相当于为一个项目多花 10% 的费用，买一个"独立审计"的保障。
+
+**原则：Maker 和 Checker 不要同一模型——独立审计才有价值。**
 
 ---
 

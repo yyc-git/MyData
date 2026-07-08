@@ -51,6 +51,123 @@ heartbeatWaitTime: 60000  // 60s 无心跳断开
 之前的实现是 `sendExit` → 服务端处理退出。但问题来了：如果页面关闭时请求还没有发出（浏览器关闭 tab 时异步请求可能被取消），服务端永远收不到 exit 信号——玩家的状态一直留在"游戏中"。
 
 2026-06-25 的 ADR 记录了修复过程：`beforeunload` 不调用 `sendExit`，而是直接用 `disconnect()` 断开 WebSocket。服务端在 `on('close')` 事件中处理退出逻辑——这个事件 100% 被触发，不会被浏览器关闭 tab 取消。
+---
+
+## 多人联网后台管理
+
+游戏上线后，运维问题是另一个层面的事——怎么查玩家状态、怎么强制清房、怎么在不重启服务的情况下维护游戏。GTS-Play 新增了一个 `packages/room-admin` 包，作为独立的 PC 管理面板。
+
+### 为什么要做后台管理？
+
+早期全靠看 SCF 日志来排查问题——玩家说“卡在房间里了”，我查日志找这个房间的 state 数据。但日志是文本格式、没有结构化查询，找一条玩家的连接记录可能要翻 50 条日志。
+
+后来 match-service 已经有了 `getAllRoomData()` 方法（通过 WebSocket 获取所有 room-service 的房间状态数据），但这个数据仅用于匹配逻辑——查找空房间、分配房间号。没有暴露给外部查询。
+
+需要后台管理的场景：
+- 玩家反馈“房间卡住了”——管理员查看房间状态，确认是否有人卡在“等待中”
+- 某次 E2E 测试后房间状态未清理——管理员手动清空房间
+- 想知道当前在线多少人、哪些房间在游戏中——实时查看
+
+### 架构：三层通信
+
+```
+┌─────────────────────────────┐
+│   room-admin (PC 管理面板)   │  React + Redux + Antd
+│   TSRPC HttpClient           │  HTTP 调用 match-service
+└──────────────┬──────────────┘
+               │ HTTP (ListRooms / ClearRoom)
+               ▼
+┌─────────────────────────────┐
+│   match-service (SCF)        │  中心服务，管理所有 room-service
+│   ├── ApiListRooms            │  调用 getAllRoomData()
+│   └── ApiClearRoom            │  通过 WsClient 调用 room-service
+└──────────────┬──────────────┘
+               │ WebSocket
+               ▼
+┌─────────────────────────────┐
+│   room-service (SCF)         │  每个实例管理一个房间
+│   └── ApiClearRoom            │  dispose → 清空房间
+└─────────────────────────────┘
+```
+
+三层设计的原因：room-service 是 WebSocket 服务，不能直接对外暴露 HTTP API。match-service 已经在维护与所有 room-service 的 WebSocket 连接（用于匹配逻辑），所以通过 match-service 做中转是最省事的办法。
+
+### ListRooms API
+
+```typescript
+// PtlListRooms
+// Req: {}
+// Res: { rooms: RoomData[] }
+// RoomData: { roomId, userCount, allUserData, isEnterGame }
+
+// 实现：调用现有 getAllRoomData()
+function handleListRooms() {
+    const rooms = getAllRoomData(state)
+    return { rooms: rooms.filter(r => r !== null).map(toRoomData) }
+}
+```
+
+内置了容错：如果某个 room-service 连接故障，`getAllRoomData()` 会跳过该房间，不会因为一个故障就导致整个列表请求失败。
+
+### ClearRoom API
+
+清空房间是一个多步操作：
+
+```
+room-admin              match-service           room-service
+    │                       │                       │
+    │─── ClearRoom(1) ────→│                       │
+    │                       │─── Ws.callApi ──────→│
+    │                       │                       │── broadcast Exit
+    │                       │                       │    → 所有玩家断开
+    │                       │                       │── Manager.dispose()
+    │                       │                       │── writeState(清空)
+    │                       │←────── succ ─────────│
+    │←────── succ ─────────│                       │
+```
+
+room-service 侧的 `ApiClearRoom` 实现：先广播 Exit 给所有玩家（使用现有的 `broadcastMsg`），再调用 `Manager.dispose(state)` 重置房间状态，最后 `writeState` 持久化空状态。这是一个幂等操作——清空空房间也会返回 success。
+
+### room-admin 管理面板
+
+`packages/room-admin` 是一个独立的 PC 端包，React + Redux + Antd，通过 TSRPC HttpClient 连接 match-service。
+
+```
+packages/room-admin/
+├── package.json
+├── webpack.config.js
+├── index.html
+├── src/
+│   ├── Main.tsx
+│   ├── matchServiceClient.ts    # TSRPC HttpClient 封装
+│   ├── ui_layer/
+│   │   ├── store/AppStore.ts
+│   │   ├── store/RoomStore.ts
+│   │   ├── pages/RoomListPage.tsx
+│   │   ├── components/RoomTable.tsx
+│   │   └── App.tsx
+│   └── App.scss
+```
+
+页面展示：房间号、状态（等待中/游戏中）、人数（如 2/4）、玩家列表（用户名）、操作（清空按钮）。
+
+### 管理面板的 BDD 测试
+
+match-service 新增了 5 个 BDD 测试场景：
+
+| 场景 | 验证 |
+|------|------|
+| ListRooms 返回所有房间数据 | room1 有 1 人、room2 有 0 人 → 列出 2 个房间 |
+| ListRooms 容错 | room2 故障 → 只返回 room1 |
+| ClearRoom 清空指定房间 | 清空后 room1 的 allUserData 为空 |
+| ClearRoom 无效房间 | roomId 999 → success=false |
+| ClearRoom 清空空房间（幂等） | 空房间再清 → success=true |
+
+room-service 新增 2 个测试场景（清空有玩家的房间 / 清空空房间）。都是通过 BDD（Given-When-Then）来描述的。
+
+---
+
+
 
 ---
 
@@ -115,6 +232,147 @@ OBB（Oriented Bounding Box）碰撞模型数据是客户端调试渲染用的�
 - 客户端 OBB 本地计算（不依赖网络数据）
 
 **教训：** 网络协议里只传输必要的游戏状态，**不要把调试数据也加进去**。obbArray 是碰撞线框的顶点数据，只在本地调试渲染时有用，其他玩家不需要知道。
+
+---
+
+
+## 通信协议与服务间通信模式
+
+多人联网涉及三个服务的相互通信——每条通信路径（客户端→room、客户端→match、match→room）都有各自的协议模式。
+
+### 通信协议一览
+
+| 服务 | 协议 | 客户端连接方式 | 端口 |
+|------|------|--------------|------|
+| room-service | TSRPC WebSocket | `wss://url?room-id=1` | 本地 4003 / SCF 9000 |
+| match-service | TSRPC HTTP | `https://url` | 本地 3000 / SCF 9000 |
+| room-admin | TSRPC HTTP | 通过 HttpClient 调用 match | 本地 8094 / 静态托管 |
+
+为什么 room-service 用 WebSocket 而 match-service 用 HTTP？
+
+- **room-service** 需要维持长连接——游戏中每帧发送命令、服务端广播状态、实时的 `broadcastState` 和 `broadcastGameEvent`。如果用 HTTP 轮询，延迟高（每个请求建立连接/TLS 握手 + 服务端处理 + 响应返回），而且状态同步做不到帧级实时。
+- **match-service** 的请求是离散的——创建房间、查找有效房间、获取房间数据、清空房间。这些请求可以走 HTTP（TSRPC 的 HttpClient 模式），不需要维持长连接。请求来就处理、处理完就断开，对 SCF 的按量计费更加友好。
+
+### 服务间通信：match → room
+
+match-service 通过 WebSocket 与所有 room-service 保持连接。连接在 match 启动时建立：
+
+```typescript
+// match-service 启动时连接所有 room
+const connections = [
+    createWsClient('wss://room1-url?room-id=1'),  // room1
+    createWsClient('wss://room2-url?room-id=2'),  // room2
+]
+
+// 通过连接调用 room-service 的 API
+async function callRoomApi(roomId, apiName, params) {
+    const conn = connections[roomId - 1]
+    return conn.callApi(apiName, params)
+}
+```
+
+### 服务间通信：room-admin → match
+
+room-admin 通过 TSRPC HttpClient（HTTP 协议）调用 match-service。因为 match-service 是 HTTP 函数，每个请求独立实例，不需要维持连接。
+
+```typescript
+// room-admin 中的客户端封装
+import { HttpClient } from 'tsrpc-browser'
+
+const client = new HttpClient(matchServiceProtocol, {
+    server: 'https://match-service-url',
+    json: true
+})
+
+// 调用 API
+async function listRooms() {
+    const res = await client.callApi('ListRooms', {})
+    return res.rooms
+}
+
+async function clearRoom(roomId) {
+    const res = await client.callApi('ClearRoom', { roomId })
+    return res.success
+}
+```
+
+### 通信协议命名规范
+
+TSRPC 的协议定义文件使用 `Ptl`（Protocol）前缀，格式为：
+
+```typescript
+// shared/protocols/matchServer/PtlListRooms.ts
+export type ReqListRooms = {}
+export type ResListRooms = { rooms: RoomData[] }
+```
+
+room-service 现有 13 个协议：
+
+| 协议 | 功能 |
+|------|------|
+| AddUser | 玩家加入房间 |
+| AllCommands | 发送/接收所有帧命令（核心协议） |
+| ClearRoom | 管理员清空房间 |
+| DebugEndGame | 调试结束游戏 |
+| EnterGame | 进入游戏 |
+| Exit | 玩家退出 |
+| Finished | 游戏结束 |
+| GetDebugRoomData | 调试数据获取 |
+| GetRoomData | 房间数据获取 |
+| KickPlayer | 踢出玩家 |
+| LoadData | 加载房间数据 |
+| PlayerReady | 玩家准备 |
+| SetConfig | 设置配置 |
+
+match-service 现有 6 个协议：
+
+| 协议 | 功能 |
+|------|------|
+| CreateRoom | 创建房间 |
+| FindValidRoom | 查找有效房间 |
+| GetRoomData | 获取房间数据 |
+| GetDebugRoomData | 调试数据获取 |
+| ListRooms | 房间列表（管理用） |
+| ClearRoom | 清空房间（管理用） |
+
+协议集中在 3 个 shared 目录下：`roomServer/`、`matchServer/`、`roomAdmin/`。所有协议文件的改动都有对应的 BDD 测试——新增协议 + 新增 .steps.ts + 跑通全部场景。
+
+### 通信中的实际问题
+
+**问题 1：OPTIONS 请求（跨域）**
+
+match-service 部署到 SCF 后，前端（包括 room-admin）通过 HTTPS 调用时，浏览器会先发一个 OPTIONS 预检请求（CORS）。SCF Web 函数默认不处理 OPTIONS——导致预检失败，真正的 API 请求被浏览器拦截。
+
+解决：在 match-service 的入口处增加 OPTIONS 处理：
+
+```typescript
+// 在 HTTP 请求入口判断 method
+if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    res.status(200).end()
+    return
+}
+```
+
+**问题 2：SCF 单实例并发限制**
+
+SCF Web 函数的自定义静态并发设为 10，但并发模型仍然有限制——多个 API 请求同时到达同个实例时，如果 API 内部存在异步操作（如 `callApi` 到其他服务），可能出现请求间相互干扰。
+
+解决：关键 API（如 Exit、PlayerReady）内部做幂等处理——即使被重复调用，也不会产生副作用。加上代次守卫（generation guard）确保过期的请求不会影响当前状态。
+
+**问题 3：serviceProto 重新生成的风险**
+
+TSRPC 每次新增/修改 API 后需要 `yarn proto` 重新生成 `serviceProto.ts`。如果忘记生成，旧版 serviceProto 不包含新 API——编译不报错（因为 serviceProto 是生成的类型文件），但运行时调用新 API 会失败。
+
+解决：在 BDD 测试流程中加入 `yarn proto` 检查——测试前先跑 proto 生成，确保 serviceProto 与协议定义一致。同时 CI 流程中增加 `npx tsc --noEmit` 检查类型错误。
+
+**问题 4：进程残留**
+
+本地开发时最常见的通信问题——room-service 进程没有完全关闭就重启新实例。新实例绑 4003 端口失败，而旧进程其实已经没响应（比如连不上 match、发不了消息）。
+
+解决：`gts-service` skill 在启动前先 `Get-Process -Name node` 过滤端口号对应的进程精确杀掉。早期用 `taskkill /F /IM node.exe` 杀所有 node 进程——结果把自己（OpenClaw）也杀了。
 
 ---
 

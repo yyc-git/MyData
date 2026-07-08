@@ -8,7 +8,7 @@
 
 2026 年 6 月，Anthropic Claude Code 负责人 Boris Cherny 说了一句话——"我已经不给 Claude 写 prompt 了。我有一堆循环在跑，它们去给 Claude 写 prompt、自己琢磨该干什么。我的工作就是写循环。"
 
-7 月，我在知乎读到 茜布 的《AI Coding 正在重新发明 Kubernetes：从 Loop Engineering 到下一代软件工程》，一口气读完，脑子里不断冒出同一个词：**这不就是我们一直在做的事吗？**
+7 月，我在知乎读到 [茜布 的《AI Coding 正在重新发明 Kubernetes：从 Loop Engineering 到下一代软件工程》](https://www.zhihu.com/question/2048003050531558553/answer/2049537011460182357)，一口气读完，脑子里不断冒出同一个词：**这不就是我们一直在做的事吗？**
 
 从 P12（AI 辅助到全自动）到 P13（Skill 固化 + 调度层）到 P14（E2E 自测）到 P15（完整工作流），从 P17（编码规则体系）到 P21（测试策略）到 P22（Token 优化）到 P23（记忆管理）到 P24（Agent Brief 规范）——我们一直在往同一个方向迭代，只是没有一个统一的框架来描述它。
 
@@ -31,11 +31,11 @@
 - **心跳机制**：AGENTS.md 定义的心跳协议，定时检查后台任务状态
 - **Skill 触发词匹配**：兄弟说「修复」「保存」「部署」自动匹配对应 Skill 并启动流程
 
-### Worktrees（Git 工作树）—— ❌ 没有
+### Worktrees（Git 工作树）—— ✅ 有
 
-我们目前没有用 git worktree。并行子 Agent（比如同时做 bug fix 和 feature dev）都工作在同一个工作目录下，文件冲突风险是真实存在的。
+多分支并行开发是基本操作。项目有 `dev`、`master`、`multiplayer`、`multiplayer2`、`multiplayer3` 等多个分支对应不同阶段。大部分时候通过分支切换隔离工作，部分场景下直接 clone 独立仓库（如 `GTS-Play-Production`）来彻底隔离。
 
-**对应文章里说的**：K8s 社区很早就知道并发 controller 会互相踩踏——多个 controller 同时修改同一个资源会导致 reconcile storm。而我们正在手动管理这种风险。
+严格来说这不等于 `git worktree` 命令，但**实现了同样目的**——并行工作空间的互不干扰。`git worktree` 的显式管理（一个命令创建独立工作目录 + 自动关联分支）可以让这个过程更加工程化，但目前的多分支 + 独立仓库方案已经够用。
 
 ### Skills（SKILL.md）—— ✅ 强项
 
@@ -137,18 +137,18 @@ Human（兄弟确认）
 
 目前只有测试套件这一层硬门槛：
 
-- ✅ 单元测试（纯函数）
-- ✅ 集成测试（BDD Cucumber）
+- ✅ 单元测试（BDD Features · 纯函数路径）
+- ✅ 集成测试（BDD Features · 服务端集成路径）
 - ✅ E2E 测试（手动辅助）
 
 缺少：
 
 - ❌ 性能基准（latency_p99 / FPS / 内存）
 - ❌ 安全扫描
-- ❌ 静态分析规则检查
-- ❌ 架构约束验证（有没有绕过开闭原则？有没有在 UI 层引用逻辑层？）
+- ✅ 静态分析规则检查：TypeScript strict mode + `npx tsc --noEmit` 类型检查 + ESLint。编译不过 == 不通过。严格模式禁止 any 类型、禁止未使用变量。
+- ❌ 架构约束验证（通过 dependency-cruiser 或自定义 ESLint 插件做 import/export 边界检查——UI 层不得 import 逻辑层、业务层不得直接依赖存储层。这些规则写进 CI，每次 PR 自动跑）
 
-**最关键的**：我们没有 Termination Condition——循环什么时候停？"测试通过"可以，但谁知道测试覆盖了所有场景？
+**最关键的**：Termination Condition 隐式存在但不算精确——验收 skill 指明了通过标准（如某个 E2E 自动测试全绿），但"测试通过"不等于"功能正确"（测试可能覆盖不全）。真正的 Termination Condition 需要验证：被修改的功能完全正确 + 未被显式修改的功能没有回归。目前靠 E2E 场景兜底，但不是可证明的收敛。
 
 文章里提到一种典型的 Agent 死法：
 
@@ -170,15 +170,25 @@ LLM 非幂等给了我们一个血淋淋的教训：同样一句话让 AI 修复
 
 ### 差异二：收敛保证 🔴 无保证
 
-K8s controller 可以证明收敛，我们的验收循环不行。Maker-Checker 同模型 + Evaluation 单层 = 收敛完全凭运气。
+K8s controller 可以证明收敛（因为 spec 是精确值如 `replicas: 3`，reconcile 逻辑确定——不断逼近直到 `actual_replicas == desired_replicas`），我们的验收循环不行。Maker-Checker 同模型 + Evaluation 单层 = 收敛完全凭运气。
 
 ### 差异三：完成判定不可机器判定 🔴 核心痛点
 
-K8s 的 desired state 是精确 spec，diff 几乎零成本。我们的"完成"判断要靠：
+K8s 的 desired state 是精确 spec——`replicas: 3`，diff 几乎零成本：`actual_replicas - 3 = 0`，完成。我们的"完成"判断要靠：
 - 测试通过（但可能覆盖不全）
 - 人工确认（瓶颈）
 
 文章里说了一个哲学问题：**谁来监督监督者？** 我们的答案目前是"兄弟监督"——Human in Loop。但这不是工程方案，这是人力兜底。
+
+**解决思路（渐进式）：**
+
+1. **Specs 可机器校验化**：BDD 场景从自然语言增加机器可读层——每个场景配 JSON 断言（期望的 state），验收循环直接 diff 这些值而不是靠肉眼检查。
+
+2. **多层 Evaluation 替代单一测试**：测试通过 + lint 无警告 + 性能基准不退步 + 架构约束不违规 → 四层都通过才算"完成"。每层都是独立校验器。
+
+3. **逃逸通道（Escape Hatch）**：验收循环加入 `max_iterations` + `timeout` 机制——超过 N 轮仍未完成时自动挂起通知兄弟。不空转、不静默失败。
+
+4. **长期方向**：把 Goal 写成类似 K8s spec 的精确 YAML 定义 + 可计算的 termination condition，让机器能硬判断 done/not done。
 
 ### 差异四：动作空间无界 ⚠️ 已意识到
 
@@ -250,7 +260,21 @@ Brief 里不再只写自然语言目标，加一层可校验的完成标准：
 
 **6. Goal Engineering 化**
 
-这是最远但也最有价值的方向。把 goal 写成可机器校验的 spec：
+这和已有的 Specs/BDD 有什么关系？
+
+Specs 描述的是"代码应该做什么"（场景、输入→输出、边界条件）。Goal Engineering 描述的是"任务什么时候算完成"（termination condition + evaluation criteria）。
+
+区别不在于谁更"重"：
+
+| 维度 | Specs / BDD | Goal Engineering |
+|------|-------------|-----------------|
+| 回答的问题 | 这功能要满足什么条件？ | 循环什么时候可以停？ |
+| 范围 | 代码行为 | 整体验收——代码 + 性能 + 安全 + 架构 |
+| 触发时机 | 开发前写好 | 验收循环入口使用 |
+| 校验者 | 测试套件 | 多层 Evaluator（测试 + 静态分析 + 基准 + 安全检查） |
+| 产出 | 通过/失败 | 通过/失败/超时 |
+
+简单说：**Specs 是给 AI 写的需求说明书，Goal 是给控制系统写的终止判定条件。** 前者描述行为，后者控制循环。两者互补，不是替代关系。这是最远但也最有价值的方向。把 goal 写成可机器校验的 spec：
 
 ```yaml
 goal:
@@ -304,8 +328,8 @@ loop:
 
 AI Coding 的未来不是写更好的 Prompt，而是设计更好的 Loop。而我们正在设计的，是一个从"一个人 + AI 做多人游戏"进化到"一个人 + 一堆循环做多人游戏"的控制系统。
 
-> *这篇文章中引用的观点出自 茜布 的《AI Coding 正在重新发明 Kubernetes：从 Loop Engineering 到下一代软件工程》，发布于知乎。如果你也在研究 Loop Engineering，强烈推荐原文。*
+> *这篇文章中引用的观点出自 [茜布 的《AI Coding 正在重新发明 Kubernetes：从 Loop Engineering 到下一代软件工程》](https://zhuanlan.zhihu.com/p/2047660729969407202)。如果你也在研究 Loop Engineering，强烈推荐原文。*
 
 ---
 
-**系列上一篇 → [（三十）给下一个 Vibe Coder 的起步指南](...)**
+**系列上一篇 → [（三十）给下一个 Vibe Coder 的起步指南](https://www.cnblogs.com/chaogex/p/21195307)**

@@ -16,24 +16,43 @@ Vibe Coding 环境下的测试策略和传统开发不太一样。传统开发�
 
 ## 三层测试
 
-### 单元测试（Jest）
+### 单元测试（BDD Features · 纯函数路径）
 
-全部由 AI 自动编写，每次修改核心逻辑后自动运行。
+和集成测试一样使用 BDD（Gherkin Feature 文件 + Step Definitions），只是覆盖的路径不同——单元测试覆盖单一纯函数的输入输出，不涉及服务端、网络或 UI。
 
 ```
-packages/logic/test/      ← ReScript 纯函数测试
-packages/room-service/test/ ← 服务端测试
+features/unit/logic/
+├── collision.feature           # 碰撞检测纯函数
+├── movement.feature            # 移动逻辑纯函数  
+└── step-definitions/
+    ├── collision.steps.ts
+    └── movement.steps.ts
 ```
 
-单元测试的关键策略：**测试纯函数，不需要 mock 外部依赖。** 因为纯函数的输入和输出都是可预测的，AI 写起来不会出错。比如 Movement.res 的转向逻辑，输入一个朝向值，输出一个旋转角度——这是一个纯函数，AI 只需要写"输入 x 期望输出 y"就可以了。
+注意单元测试也是 BDD Feature 文件，不是普通的 `*.test.ts`。因为 AI 在同一套框架下更容易切换视角——写单元测试和写集成测试用的是同一套术语、同一套断言风格、同一个配置。
 
-相比之下，如果让 AI 写一个包含 side effect（网络请求、DOM 操作）的单元测试，它就会搞出各种奇怪的 mock——mock 了整个 TSRPC 客户端，或者 mock 了 `window` 对象，这些 mock 本身可能比生产代码还复杂，而且测试的价值极低。
+单元测试的关键策略：**测试纯函数，不需要 mock 外部依赖。** 因为纯函数的输入和输出都是可预测的，AI 写起来不会出错。比如 Movement.res 的转向逻辑，输入一个朝向值，输出一个旋转角度——这是一个纯函数，AI 只需要写"给定输入 x，期望输出 y"就可以了。
 
-实际案例：有一回 AI 测 `computeCollisionDamage` 函数，想测试"跑步时踩踏触发伤害"。它 mock 了整个 `State` 对象、mock 了 `players` Map、mock 了 `hull` 数组——mock 了 60 行，测试逻辑只有 5 行。我在代码审核里看到这条，要求它改：直接传入实际数据，不要 mock。改了之后测试从 65 行变成 15 行，且更重要——它测试了真正的代码路径。
+相比之下，如果让 AI 写一个包含 side effect（网络请求、DOM 操作）的测试，它就会搞出各种奇怪的 mock——mock 了整个 TSRPC 客户端，或者 mock 了 `window` 对象，这些 mock 本身可能比生产代码还复杂，而且测试的价值极低。
 
-### 集成测试（BDD Cucumber）
+一个典型的单元 BDD 场景：
 
-用真实的服务实例测试。不 mock，不 stub。
+```gherkin
+Feature: 碰撞检测
+  Scenario: 直线移动的玩家踩到敌人
+    Given 玩家在位置 (0, 0, 0)，面向 Z 轴正方向
+    When 玩家持续移动 2 秒
+    And 敌人在位置 (0, 0, 10)
+    Then 碰撞检测返回 true
+```
+
+和集成测试的 Feature 文件格式完全一样。区别只在于：单元测试的是单一逻辑层（ReScript 纯函数），不需要启动服务、不涉及网络 IO。
+
+实际案例：有一回 AI 测 `computeCollisionDamage` 函数，想测试"跑步时踩踏触发伤害"。它一开始想 mock 整个 `State` 对象，我要求它改：直接传入实际数据，不要 mock。改完后测试只有 15 行，且更重要的是——它测试了真正的代码路径。
+
+### 集成测试（BDD Features · 服务端集成路径）
+
+和单元测试一样使用 BDD Feature 文件，覆盖的是服务端集成路径——需要启动 room-service 实例、经过 TSRPC 协议层、测试完整的业务流程。
 
 ```
 Feature: Room Lifecycle
@@ -71,6 +90,95 @@ BDD 测试的配置文件是独立的 `jest.multiplayer.json`，不和其他测�
 E2E 测试比较重：需要先重启 room-service 和 match-service（避免 WS 失连），打开两个浏览器窗口，手动输入相同的房间，然后验证各种交互。因为 E2E 测试的维护成本高，我们没有跑在 CI 上，而是作为上线的最终关口。
 
 最重要的一条 E2E 规则：**E2E 测试前必须先重启 room-service + match-service。** 我第一次做 E2E 测试时，没重启服务端，结果连接了之前的 WebSocket 会话——服务端以为玩家还在上一个游戏里，一直报 "already in game"。排查了半小时才发现是会话残留。
+
+---
+
+## E2E 积木化重构
+
+初期 E2E 测试是一个巨长的 Playwright 脚本：打开浏览器 → 登录 → 创建房间 → 等待匹配 → 进入游戏 → 移动 → 攻击 → 退出。跑一次十几分钟，中间任何一步挂了都要从头来——从头再来十几分钟。
+
+重构思路：把 E2E 场景拆成独立的 **积木（blocks）**，每个积木验证一个原子场景。
+
+### 积木结构
+
+两层：
+
+- **积木（blocks）** — 原子操作，每个是独立的 Playwright block，如 room-join、move、collision-damage
+- **场景 JSON（scenarios）** — 配置层，用 JSON 描述要组合哪些积木和参数
+
+```
+test/e2e/
+├── blocks/                          # 积木实现
+│   ├── room-join.block.ts
+│   ├── move.block.ts
+│   ├── collision-damage.block.ts
+│   └── sync-accuracy.block.ts
+└── scenarios/                       # 场景配置（JSON）
+    ├── gameover-twocycle.json
+    ├── empty-room-join.json
+    └── scf-twowin.json
+```
+
+一个场景 JSON 示例如下：
+
+```json
+{
+  "name": "双人联机到结束",
+  "blocks": [
+    { "name": "room-join", "players": 2 },
+    { "name": "move", "direction": "forward", "duration": 3 },
+    { "name": "collision-damage", "target": "player2" },
+    { "name": "exit", "player": "player2" }
+  ],
+  "env": "local"
+}
+```
+
+Runner（`e2e-runner.cjs`）读取 JSON → 按顺序调用积木执行。想加一个新场景，不用写一行代码——从已有积木里挑几个拼成 JSON 就行。
+
+这种组合方式在传统测试里很难做到：传统测试每个场景是一个独立的脚本文件，有 setup/teardown/assert 的完整代码。但在我们的体系里，**脚本（积木）和场景是分离的**——积木提供能力，JSON 决定测什么。
+
+
+### 积木化的三个核心收益
+
+**1. 可组合。** 这才是积木化最大的价值——**不用为每个测试场景写脚本**。已有积木：
+
+- room-join、room-exit-reenter、move、collision-damage、sync-accuracy、reconnect
+
+任意组合这些积木就是一个新场景。Runner 会自动编排执行、状态隔离、截图记录。
+
+实际案例：发现"退出后移动键无响应"的 bug，当场写了个 JSON：`[room-join, move, exit, reenter, move]`——5 分钟就验证了问题。如果用传统 E2E 脚本，至少要花 2 小时写完整的 Playwright 代码。
+
+**2. 快速反馈。** 原来跑一次 E2E > 10 分钟，现在单个积木 30 秒到 1 分钟。AI 修 bug 后可以快速验证，不用等整套流程。
+
+**3. AI 可写。** 积木模板固定 `setup → action → assert → cleanup`，AI 只要填空。而且 AI 生成新场景的成本几乎为零——它不写代码，只组装 JSON。
+
+积木化的核心原则：**一个积木只验证一个场景，退出即清理，不依赖兄弟积木。**
+
+---
+
+## 验收流程（gts-acceptance）
+
+测试的终点不是"代码通过"，而是"兄弟确认能上线"。GTS-Play 的验收流程分成五步：
+
+### Step 1：审核
+AI 代码审核检查 🐛🔴🟡🟢，确认没有红线违规、没有越界改动、没有假测试。
+
+### Step 2：BDD 先 RED 再 GREEN
+集成测试先在未修复的代码上跑，确认因 bug 真实 ❌ 失败（锁定问题），再修复代码 ✅ 通过（确认修复生效）。
+
+### Step 3：E2E 自动测试
+用积木和场景 JSON 组合执行 E2E 测试（积木和 JSON 的具体设计见上方"E2E 积木化重构"章节）。根据测试目标选择环境：
+
+- **本地环境**：重启 room-service + match-service → 启动 webpack-dev-server → 运行 E2E 场景
+- **线上环境（SCF）**：检查是否有未部署的改动 → 若有则先部署到对应服务 → 运行 E2E 验证线上版本
+
+E2E 同时支持本地和在线的场景验证，用哪个环境由场景 JSON 里的 `env` 字段决定。一次全量 E2E（所有场景）大约 5 分钟。
+
+### Step 4：兄弟玩一次
+走到这一步，代码层面已经全通过了。但 UI/UX 的问题测试测不出来——比如按钮位置不对、反馈不够清晰、动画卡顿。我会上线（或本地运行）玩一局，确认一切正常。
+
+这个流程看似复杂，但实际走一遍只需要 5-10 分钟。而且一旦有一步卡住，AI 会自动修复（OpenCode）然后重跑。如果重跑三次仍然失败，系统会停下来问我"还要继续修吗"。
 
 ---
 
@@ -121,6 +229,6 @@ GTS-Play 的测试量大约 260 个测试、42 个测试套件。但覆盖率的
 
 ---
 
-下期讲 **P22：Token 优化全攻略**——月费从 2000 到 100 的实操方案。
+下期讲 **P22：Token 优化全攻略**——月费从 3000 到几百的实操方案。
 
 **下一篇：[Vibe Coding 多人游戏（二十二）—— Token 优化全攻略](https://www.cnblogs.com/chaogex/p/21195307)**
