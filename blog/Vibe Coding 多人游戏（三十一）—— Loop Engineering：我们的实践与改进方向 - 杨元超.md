@@ -61,7 +61,7 @@
 - **msg \* 桌面通知**：等确认时必须通知
 - **ImageMagick**：截图压缩
 
-但缺少 **Issue System 集成**、**CI/CD 管线自动触发**（目前是手动部署）。
+但缺少 **Issue System 集成**、**CI/CD 管线自动触发**
 
 ### Sub-agents（子 Agent）—— ✅ 有，但待进化
 
