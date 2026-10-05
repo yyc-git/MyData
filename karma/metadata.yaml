@@ -1,0 +1,16 @@
+---
+CJKmainfont: KaiTi
+urlcolor: NavyBlue
+toccolor: Red
+geometry:
+  - top=2cm
+  - bottom=1.5cm
+  - left=2cm
+  - right=2cm
+header-includes:
+  - \usepackage{xeCJK}
+  - \xeCJKsetup{CJKmath=true}
+  - \definecolor{bgcolor}{HTML}{F0F0F0}
+  - \let\oldtexttt\texttt
+  - \renewcommand{\texttt}[1]{\colorbox{bgcolor}{\oldtexttt{#1}}}
+---
